@@ -1,0 +1,32 @@
+[project]
+name = "RR-GCL"
+version = "0.1.0"
+description = "Residue Residue Graph Contrastive Learning for Oncology"
+requires-python = ">=3.11"
+
+authors = [
+    {name: "Sunghwan Moon"}
+]
+
+dependencies = [
+    "torch==2.7.1",
+    "torch-geometric==2.7.0",
+    "pyg_lib==0.5.0+pt27cu126",
+    "torch-sparse==0.6.18+torch27.computecanada",
+    "torch-scatter==2.1.2+torch27.computecanada",
+    "networkx==3.5",
+    "pandas",
+    "numpy",
+    "scipy",
+    "pyyaml",
+    "wandb==0.24.0",
+    "scikit-learn",
+    "matplotlib",
+    "statsmodels",
+    "bioservices",
+    "nx-parallel==0.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["data*", "utils*", "models*"]
