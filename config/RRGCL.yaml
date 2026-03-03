@@ -1,0 +1,7 @@
+# ====================
+# Basic Settings
+# ====================
+SEED: 42
+SAVEPATH: None # Result Save Path
+GraphPATH: None # Graph Path - pkl file
+FeaturePATH: None # Feature Path - csv file

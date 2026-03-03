@@ -1,0 +1,48 @@
+# ====================
+# Data Settings
+# ====================
+
+# Node Feature from csv file
+table_feat:
+  - # To-be Updated
+
+# Node Feature from nx.graph object
+graph_feat:
+  - degree
+  - betweenness
+  - pagerank
+  - closeness_centrality
+  - shortest_path_length
+
+# Edge Setting
+use_edge_weight: False
+
+# ====================
+# Model Settings
+# ====================
+sim_feat:
+# Secondary Structure Features
+  - depth
+  - hse_up
+  - hse_down
+  - rel_sasa
+  - dssp_phi
+  - dssp_psi
+  - dssp_kappa
+# Topological Features
+  - degree
+  - pagerank
+  - betweenness
+  - shortest_path_length
+  - closeness_centrality
+# Physicochmeical Features
+  - DAYM780301_avg       # score=10^(DAYM780301_avg/10)
+  - HENS920102_avg       # score=2^(HENS920102_avg/3)
+  - KYTJ820101
+  - CHOP780201
+  - GRAR740103
+  - KLEP840101
+
+# ====================
+# Data Augmentation
+# ====================
