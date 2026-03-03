@@ -21,7 +21,7 @@ use_edge_weight: False
 # Model Settings
 # ====================
 sim_feat:
-# Secondary Structure Features
+  STRUCT_KEYS: # Secondary Structure Features
   - depth
   - hse_up
   - hse_down
@@ -29,20 +29,24 @@ sim_feat:
   - dssp_phi
   - dssp_psi
   - dssp_kappa
-# Topological Features
+  TOPO_KEYS: # Topological Features
   - degree
   - pagerank
   - betweenness
   - shortest_path_length
   - closeness_centrality
-# Physicochmeical Features
-  - DAYM780301_avg       # score=10^(DAYM780301_avg/10)
-  - HENS920102_avg       # score=2^(HENS920102_avg/3)
+  PHYSCHEM_KEYS: # Physicochmeical Features
+  - DAYM780301_avg   # score=10^(DAYM780301_avg/10)
+  - HENS920102_avg   # score=2^(HENS920102_avg/3)
   - KYTJ820101
   - CHOP780201
   - GRAR740103
   - KLEP840101
-
+  MUT_KEYS:
+  - total_mutaions_count
+  - unique_patients_count
+  - unique_mutations_type
+  
 # ====================
 # Data Augmentation
 # ====================
