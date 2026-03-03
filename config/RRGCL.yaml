@@ -1,6 +1,7 @@
 # ====================
 # Basic Settings
 # ====================
+model: RRGCL
 SEED: 42
 SAVEPATH: None # Result Save Path
 GraphPATH: None # Graph Path - pkl file
