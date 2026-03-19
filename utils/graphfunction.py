@@ -3,8 +3,6 @@ import pickle
 
 import networkx as nx
 
-
-
 def load_graph(path: str) -> nx.Graph:
     with open(path, 'rb') as f:
         G = pickle.load(f)
@@ -34,3 +32,11 @@ def get_sample(G):
     sample_node = next(iter(G.nodes))
     sample_edge = next(iter(G.edges))
     return sample_node, sample_edge
+
+def get_unique_node(df):
+    return set(df['nodeid_1'].unique().tolist() + df['nodeid_2'].unique().tolist())
+
+def get_unique_node_pairs(df, col1='nodeid_1', col2='nodeid_2'):
+    sorted_nodes = np.sort(df[[col1, col2]].values, axis=1)
+    unique_pairs = set(map(tuple, sorted_nodes))
+    return unique_pairs
