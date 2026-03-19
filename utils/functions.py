@@ -47,24 +47,10 @@ def init_wandb(config):
     
     return run
 
-def LoadConfig(args):
-    with open(args.config_path, 'r') as f:
-        run_config = yaml.safe_load(f)
-    
-    model_name = run_config.get('model')
-    model_config_path = os.path.join(
-        os.path.dirname(__file__), f'../config/{model_name}.yaml'
-    )
-    with open(model_config_path, 'r') as f:
-        model_config = yaml.safe_load(f)
-
-    combined_config = {**model_config, **run_config, **vars(args)}
-
-    for key, value in combined_config.items():
-        if value == "None":
-            combined_config[key] = None
-
-    return argparse.Namespace(**combined_config)
+def load_yaml(path: str) -> dict:
+    with open(path, 'r') as f:
+        config = yaml.safe_load(f)
+    return argparse.Namespace(**config)
 
 def print_time(training_time):
     hours = int(training_time // 3600)
