@@ -1,17 +1,18 @@
 [project]
 name = "RR-GCL"
-version = "0.1.0"
-description = "Residue Residue Graph Contrastive Learning for Oncology"
+version = "0.0.1"
+description = "Mutation-Guided Graph Contrastive Learning for Histone-related Residue Representation"
 requires-python = ">=3.11"
 
 authors = [
-    {name: "Sunghwan Moon"}
+    {name = "Sunghwan Moon"},
+    {name = "Yiru Sheng"},
+    {name = "Anna Panchenko"}
 ]
 
 dependencies = [
     "torch==2.7.1",
     "torch-geometric==2.7.0",
-    "pyg_lib==0.5.0+pt27cu126",
     "torch-sparse==0.6.18+torch27.computecanada",
     "torch-scatter==2.1.2+torch27.computecanada",
     "networkx==3.5",
@@ -29,4 +30,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["data*", "utils*", "models*"]
+include = ["utils*", "models*"]
