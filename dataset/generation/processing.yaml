@@ -1,0 +1,26 @@
+# BASE PATH
+BASEPATH: None
+EDGEFILE: 'human_aa_aa_edges_corrected.csv'
+
+# Reference Data
+INCL_PDB: None
+EXCEPT_PDB: ['invalid_structure_ids_v121825.csv', 'mutated_pdbs.csv']
+
+INCL_UNIPROT: ['nucleolus_pt_v121825.csv']
+EXCEPT_UNIPROT: None
+
+INCL_NODE: ['nodes_from_edge_df_AliSeq_v031026.csv']
+EXCEPT_NODE: None
+
+REMOVE_UBQ: ['p0cg47', 'p62979', 'p0cg48', 'p62987', 
+              # For remove homodimer node
+              'p0cg47_', 'p62979_', 'p0cg48_', 'p62987_',
+              'p0cg47-', 'p62979-', 'p0cg48-', 'p62987-']
+
+CDSFILE: all_nodes_cds_context.csv
+MUTABILITYTABLE: mutagene_type_mutability_expanded.json
+CANCERTYPE: 'pan-cancer' # To-do: Add more cancer types
+
+# Processing Configuration
+CDS_FILTER: False
+WEIGHT_COL: 'cleaned_total_energy'
