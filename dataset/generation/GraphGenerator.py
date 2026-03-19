@@ -16,7 +16,7 @@ def main(args):
     EDGEPATH = os.path.join(args.BASEPATH, args.EDGEFILE)
     INTERMEDIATEPATH = os.path.join(args.BASEPATH, 'processing')
     FINALPATH = os.path.join(args.BASEPATH, 'final')
-    REFPATH = os.path.join(args.BASEPATH, args.REFPATH)
+    REFPATH = os.path.join(args.BASEPATH, 'reference')
 
     # Check & Make Dirs
     check_path(EDGEPATH, INTERMEDIATEPATH, FINALPATH, REFPATH)
@@ -137,25 +137,25 @@ def main(args):
             print("[Final] Graph Generation (All-chain)")
             print(f"Total Nodes: {len(G.nodes)}, Total Edges: {len(G.edges)}")
             if args.CDS_FILTER:
-                GraphSAVE = os.path.join(args.SAVEPATH, f'weighted_all-chain_incl_homodimer_v{DATE}.pkl')
+                GraphSAVE = os.path.join(FINALPATH, f'weighted_all-chain_incl_homodimer_v{DATE}.pkl')
             else:
-                GraphSAVE = os.path.join(args.SAVEPATH, f'skipCDSFilter_weighted_all-chain_v{DATE}.pkl')
+                GraphSAVE = os.path.join(FINALPATH, f'skipCDSFilter_weighted_all-chain_v{DATE}.pkl')
 
         elif i == 1:
             print("[Final] Graph Generation (Inter-chain w/ homodimer)")
             print(f"Total Nodes: {len(G.nodes)}, Total Edges: {len(G.edges)}")
             if args.CDS_FILTER:
-                GraphSAVE = os.path.join(args.SAVEPATH, f'weighted_inter-chain_incl_homodimer_v{DATE}.pkl')
+                GraphSAVE = os.path.join(FINALPATH, f'weighted_inter-chain_incl_homodimer_v{DATE}.pkl')
             else:
-                GraphSAVE = os.path.join(args.SAVEPATH, f'skipCDSFilter_weighted_inter-chain_incl_homodimer_v{DATE}.pkl')
+                GraphSAVE = os.path.join(FINALPATH, f'skipCDSFilter_weighted_inter-chain_incl_homodimer_v{DATE}.pkl')
 
         elif i == 2:
             print("[Final] Graph Generation (Inter-chain w/o homodimer)")   
             print(f"Total Nodes: {len(G.nodes)}, Total Edges: {len(G.edges)}")
             if args.CDS_FILTER:
-                GraphSAVE = os.path.join(args.SAVEPATH, f'weighted_inter-chain_excl_homodimer_v{DATE}.pkl')
+                GraphSAVE = os.path.join(FINALPATH, f'weighted_inter-chain_excl_homodimer_v{DATE}.pkl')
             else:
-                GraphSAVE = os.path.join(args.SAVEPATH, f'skipCDSFilter_weighted_inter-chain_incl_homodimer_v{DATE}.pkl')
+                GraphSAVE = os.path.join(FINALPATH, f'skipCDSFilter_weighted_inter-chain_incl_homodimer_v{DATE}.pkl')
 
         with open(GraphSAVE, 'wb') as f:
             pickle.dump(G, f)
