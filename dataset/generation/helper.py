@@ -16,7 +16,7 @@ def check_path(EDGEPATH, INTERMEDIATEPATH, FINALPATH, REFPATH):
         os.makedirs(FINALPATH)
 
 
-def load_pdb_uniprot(args):
+def load_pdb_uniprot_node(args):
     if args.EXCEPT_PDB: 
         except_pdb = []
         for file in args.EXCEPT_PDB: 
