@@ -30,4 +30,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["utils*", "models*"]
+include = ["utils*", "models*", "data*"]
