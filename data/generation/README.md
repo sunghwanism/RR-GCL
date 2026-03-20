@@ -42,3 +42,14 @@ python -m data.generation.evol.evolProcessing --evolPATH <Evol_PATH> --savePATH 
   - Log-odd score: 20
   - Entropy: 1
 
+## AlphaMissense
+### Require Files
+- [Gzip] AlphaMissense Score Table (AlphaMissense_hg38.tsv.gz)
+  - You can download it from [DownLoad Link](https://grr.iossifovlab.com/hg38/scores/AlphaMissense/index.html)
+- [pkl] Generated Graph from ```Graph Generation Process``` (Optional)
+
+#### Calculated AlphaMissense Score
+Above file is too large to make a json file directly. I recommend to select proteins you have and calculate AlphaMissense score for them.
+```sh
+python -m data.generation.alphamissense.amProcessing --amPATH <AM_PATH> --graphPATH <GRAPH_PATH> --savePATH <SAVE_PATH> --num_workers <NUM_WORKERS>
+```
