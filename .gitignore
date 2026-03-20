@@ -1,5 +1,9 @@
 logs/*
 wandb/*
+PoC.ipynb
+
+
+data/proc_data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
