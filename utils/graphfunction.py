@@ -40,3 +40,13 @@ def get_unique_node_pairs(df, col1='nodeid_1', col2='nodeid_2'):
     sorted_nodes = np.sort(df[[col1, col2]].values, axis=1)
     unique_pairs = set(map(tuple, sorted_nodes))
     return unique_pairs
+
+
+def get_uniprot_from_nodes(node):
+    return node.split("_")[0].split("-")[0]
+
+def get_pos_from_nodes(node):
+    return node.split("_")[1]
+
+def get_res_from_nodes(node):
+    return node.split("_")[2]
