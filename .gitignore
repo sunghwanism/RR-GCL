@@ -1,7 +1,7 @@
 logs/*
 wandb/*
 PoC.ipynb
-
+config/RRGCL.yaml
 
 data/proc_data/*
 
@@ -212,3 +212,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+config/RRGCL.yaml
