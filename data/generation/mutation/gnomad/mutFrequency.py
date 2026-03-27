@@ -202,6 +202,9 @@ if __name__ == "__main__":
     print(f"Total number of uniprot ids: {len(uniprot_ids)}")
 
     df = build_dataset(uniprot_ids)
-
+    df['node_id'] = df.apply(
+        lambda row: f"{str(row['uniprot_id']).lower()}_{row['position']}_{row['residuetype']}", 
+        axis=1
+    )
     # Save to CSV
     df.to_csv("data/proc_data/gnomad_mutation_counts.csv", index=False)
