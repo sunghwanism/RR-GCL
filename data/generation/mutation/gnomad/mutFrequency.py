@@ -204,4 +204,4 @@ if __name__ == "__main__":
     df = build_dataset(uniprot_ids)
 
     # Save to CSV
-    df.to_csv("gnomad_mutation_counts.csv", index=False)
+    df.to_csv("data/proc_data/gnomad_mutation_counts.csv", index=False)
