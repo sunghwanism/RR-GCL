@@ -16,6 +16,7 @@ def get_parser():
     parser.add_argument("--graphPATH", type=str, required=True, help="Path to graph pkl file")
     parser.add_argument("--savePATH", type=str, required=True, help="Path to save the feature JSON")
     parser.add_argument("--num_workers", type=int, default=cpu_count(), help="Number of CPU cores to use")
+    parser.add_argument("--add_am_score_folder", type=str default='data/reference', help='Additional AM score Table (tsv)')
     return parser.parse_args()
 
 def process_am_chunk(target_subset, tsv_gz_path):
@@ -118,10 +119,39 @@ def main(args):
     # Identify IDs that were not found in AlphaMissense file
     failed_ids = list(original_protein_set - found_protein_ids)
 
+    additional_uniprot = [f.split("-")[1][:-4].lower() for f in os.listdir(args.add_am_score_folder) if 'AlphaMissense' in f]
+
+    for fail_uniprot in failed_ids:
+        if fail_uniprot in additional_uniprot:
+            print(fail_uniprot)
+            am_path = os.path.join(args.add_am_score_folder, f"AlphaMissense-{fail_uniprot.upper()}.tsv")
+            am_df = pd.read_csv(am_path, sep='\t',)
+            aa_to_idx = {aa: i for i, aa in enumerate(amino_acids)}
+
+            grouped = am_df.groupby(['position', 'a.a.1'])
+            for (pos, ref_aa), group in grouped:
+                res_type_3 = residue1to3.get(ref_aa, ref_aa.lower())
+                node_id = f"{fail_uniprot}_{pos}_{res_type_3.lower()}"
+                score_list = [0.0] * 20
+
+                for _, row in group.iterrows():
+                    alt_aa = row['a.a.2']
+                    score = float(row['pathogenicity score'])
+                    if alt_aa in aa_to_idx:
+                        score_list[aa_to_idx[alt_aa]] = score
+
+                # total_am_dict[node_id] = score_list
+                total_am_dict[node_id] = score_list
+
+                found_protein_ids.add(fail_uniprot.lower())
+
     # Save Feature JSON
     am_path = args.savePATH + "/am_features.json"
     with open(am_path, 'w', encoding='utf-8') as jf:
         json.dump(total_am_dict, jf)
+
+    # Identify IDs that were not found in AlphaMissense file
+    failed_ids = list(original_protein_set - found_protein_ids)
     
     # Save Failed IDs JSON (filename_failed.json)
     failed_json_path = args.savePATH + "/am_failed.json"
