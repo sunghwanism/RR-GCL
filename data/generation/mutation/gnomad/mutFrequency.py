@@ -206,5 +206,6 @@ if __name__ == "__main__":
         lambda row: f"{str(row['uniprot_id']).lower()}_{row['position']}_{row['residuetype']}", 
         axis=1
     )
+    df = pd.concat([df.iloc[:,-1], df.iloc[:,:-1]], axis=1)
     # Save to CSV
     df.to_csv("data/proc_data/gnomad_mutation_counts.csv", index=False)
