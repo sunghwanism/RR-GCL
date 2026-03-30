@@ -50,3 +50,6 @@ def get_pos_from_nodes(node):
 
 def get_res_from_nodes(node):
     return node.split("_")[2]
+
+def get_node_id_rm_copy(node):
+    return get_uniprot_from_nodes(node) + "_" + get_pos_from_nodes(node) + "_" + get_res_from_nodes(node)
