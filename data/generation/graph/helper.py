@@ -1,6 +1,7 @@
 import os
 
-from CDSLoader import calculate_mutability_for_row
+# from CDSLoader import calculate_mutability_for_row
+import networkx as nx
 
 def check_path(EDGEPATH, INTERMEDIATEPATH, FINALPATH, REFPATH):
     if not os.path.exists(EDGEPATH):
