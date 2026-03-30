@@ -50,22 +50,20 @@ def get_canonical_enst(uniprot_id: str) -> str:
 def fetch_variants_by_transcript(enst_id: str) -> tuple:
     """Fetch gnomAD v4 missense variants + gene symbol by ENST ID"""
     query = """
-    {
-      transcript(transcript_id: "%s", reference_genome: GRCh38) {
-        transcript_id
-        gene {
-          symbol
+        {
+        transcript(transcript_id: "%s", reference_genome: GRCh38) {
+            transcript_id
+            gene { symbol }
+            variants(dataset: gnomad_r4) {
+            variant_id
+            consequence
+            hgvsp
+            exome { ac an }
+            genome { ac an }
+            }
         }
-        variants(dataset: gnomad_r4) {
-          variant_id
-          consequence
-          hgvsp
-          exome { ac }
-          genome { ac }
         }
-      }
-    }
-    """ % enst_id
+        """ % enst_id
 
     r = requests.post(GNOMAD_API, json={"query": query})
     data = r.json()
@@ -126,30 +124,39 @@ def build_dataset(uniprot_ids: list) -> pd.DataFrame:
             continue
 
         for v in variants:
-            if v.get("consequence") != "missense_variant":
-                continue
+                    if v.get("consequence") != "missense_variant":
+                        continue
 
-            ref_aa, pos, alt_aa = parse_hgvsp(v.get("hgvsp"))
-            if pos is None:
-                continue
+                    ref_aa, pos, alt_aa = parse_hgvsp(v.get("hgvsp"))
+                    if pos is None:
+                        continue
 
-            ac = 0
-            if v.get("exome") and v["exome"].get("ac"):
-                ac += v["exome"]["ac"]
-            if v.get("genome") and v["genome"].get("ac"):
-                ac += v["genome"]["ac"]
+                    ac = 0
+                    an = 0
+                    
+                    if v.get("exome"):
+                        ac += v["exome"].get("ac") or 0
+                        an += v["exome"].get("an") or 0
+                    
+                    if v.get("genome"):
+                        ac += v["genome"].get("ac") or 0
+                        an += v["genome"].get("an") or 0
 
-            all_records.append({
-                "uniprot_id": uid,
-                "enst_id": enst,
-                "gene_symbol": gene_symbol,
-                "residuetype": AA1TO3[AA3TO1[ref_aa.upper()]].lower(),
-                "position": pos,
-                "alt_aa": AA1TO3[AA3TO1[alt_aa.upper()]].lower(),
-                "allele_count": ac
-            })
+                    af = ac / an if an > 0 else None
 
-        time.sleep(10)  # Rate limit prevention
+                    all_records.append({
+                        "uniprot_id": uid,
+                        "enst_id": enst,
+                        "gene_symbol": gene_symbol,
+                        "residuetype": AA1TO3[AA3TO1[ref_aa.upper()]].lower(),
+                        "position": pos,
+                        "alt_aa": AA1TO3[AA3TO1[alt_aa.upper()]].lower(),
+                        "allele_count": ac,
+                        "allele_number": an,
+                        "allele_frequency": af
+                    })
+
+        time.sleep(5)  # Rate limit prevention
 
     # Step 3: Aggregate
     df = pd.DataFrame(all_records)
@@ -159,22 +166,24 @@ def build_dataset(uniprot_ids: list) -> pd.DataFrame:
 
     # Build variant dict: {mutant_type: allele_count, ...}
     variant_dict = (
-        df.groupby(["uniprot_id", "enst_id", "gene_symbol",
-                     "residuetype", "position"])
-        .apply(lambda g: dict(zip(g["alt_aa"], g["allele_count"])))
-        .reset_index(name="variant")
-    )
+            df.groupby(["uniprot_id", "enst_id", "gene_symbol", "residuetype", "position"])
+            .apply(lambda g: g.groupby("alt_aa")["allele_count"].sum().to_dict())
+            .reset_index(name="variant")
+        )
+
 
     # Add mutation_count and total_allele_count
     counts = (
-        df.groupby(["uniprot_id", "enst_id", "gene_symbol",
-                     "residuetype", "position"])
+        df.groupby(["uniprot_id", "enst_id", "gene_symbol", "residuetype", "position"])
         .agg(
-            mutation_count=("alt_aa", "nunique"),
-            total_allele_count=("allele_count", "sum")
+            unique_mutation_type=("alt_aa", "nunique"),
+            total_mutations_count=("allele_count", "sum"),
+            total_number=("allele_number", "max") 
         )
         .reset_index()
     )
+
+    counts['frequency'] = counts['total_mutations_count'] / counts['total_number']
 
     result = counts.merge(variant_dict, on=["uniprot_id", "enst_id", "gene_symbol",
                                               "residuetype", "position"])
@@ -182,8 +191,6 @@ def build_dataset(uniprot_ids: list) -> pd.DataFrame:
         result.sort_values(["uniprot_id", "position"])
         .reset_index(drop=True)
     )
-
-    result = result.rename({"mutation_count": "unique_mutation_type", "total_allele_count": "total_mutations_count"}, axis=1)
 
     print(f"\nDone: {len(result)} residue positions collected")
     return result
@@ -202,6 +209,10 @@ if __name__ == "__main__":
     print(f"Total number of uniprot ids: {len(uniprot_ids)}")
 
     df = build_dataset(uniprot_ids)
-
+    df['node_id'] = df.apply(
+        lambda row: f"{str(row['uniprot_id']).lower()}_{row['position']}_{row['residuetype']}", 
+        axis=1
+    )
+    df = pd.concat([df.iloc[:,-1], df.iloc[:,:-1]], axis=1)
     # Save to CSV
-    df.to_csv("gnomad_mutation_counts.csv", index=False)
+    df.to_csv("data/proc_data/gnomad_mutation_counts_freq.csv", index=False)
