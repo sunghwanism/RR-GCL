@@ -2,8 +2,11 @@ import os
 import yaml
 import argparse
 
+import gc
+import torch
 import random
 import numpy as np
+from datetime import datetime
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -60,14 +63,18 @@ def print_time(training_time):
 
     return formatted_time
 
+def today_date():
+    """
+    Returns today's date in MMDDYY format.
+    Example: 040126
+    """
+    return datetime.now().strftime('%m%d%y')
+
 def clean_the_memory():
-    import gc
-    import torch
     gc.collect()
     torch.cuda.empty_cache()
 
 def set_seed(seed):
-    import torch
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
