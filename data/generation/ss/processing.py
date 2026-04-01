@@ -9,14 +9,15 @@ import numpy as np
 import networkx as nx
 
 import matplotlib.pyplot as plt
-from utils.functions import load_yaml
+from utils.functions import load_yaml, today_date
 from utils.graphfunction import load_graph, get_sample, get_uniprot_from_nodes, get_pos_from_nodes, get_res_from_nodes, get_node_id_rm_copy
 
-config = load_yaml("../../../config/RRGCL.yaml")
+config = load_yaml("config/RRGCL.yaml")
 DATABASE = config.DATABASE
 
 
 def main():
+    print("[0] Load Data")
     y_df = pd.read_csv(f"{DATABASE}/node_features_with_location_nodeid_v031026.csv")
 
     # Load Graph for weighted Augmentation
@@ -26,6 +27,8 @@ def main():
     ################################################
     # 1. Float SS Augmentation
     ################################################
+    print("[1] Float SS Augmentation")
+
     T = 5.0 # For Temperature in NaN Augmentation (2)
 
     float_cols = ['rel_sasa', 'ss_helix', 'ss_sheet','ss_loop', 'depth', 'hse_up', 'hse_down',
@@ -68,7 +71,7 @@ def main():
     float_ss_df = float_ss_df.set_index('node_id')
 
     for col in float_cols:
-        print(f"[{col}] processing...")
+        print(f"({col}) processing...")
         
         missing_nodes = float_ss_df[float_ss_df[col].isna()].index
         
@@ -99,21 +102,37 @@ def main():
     float_ss_df = float_ss_df.reset_index()
     float_ss_df.drop(columns=['uniprot', 'res', 'pos', 'cleaned_rm_node_id'], inplace=True)
     merge_float_df = float_ss_df.groupby('node_id').mean().reset_index()
+    print("[1] Float SS Augmentation Done")
 
     ################################################
-    # 2. Str SS Augmentation
+    # 2. StrType SS Augmentation
     ################################################
-
+    print("[2] StrType SS Augmentation")
     str_list = ['node_id',
                 'dssp_sec_struct', # Class
                 'dssp_helix_3_10', 'dssp_helix_alpha', 'dssp_helix_pi', 'dssp_helix_pp', 'dssp_bend',
                 'dssp_chirality', 'dssp_sheet', 'dssp_strand', 'dssp_ladder_1','dssp_ladder_2',]
 
+    str_cols = str_list[1:]
+
     str_ss_df = y_df[str_list].copy()  # str
-    str_ss_df['cleaned_rm_node_id']= str_ss_df['node_id'].map(get_node_id_rm_copy)
+    # str_ss_df['cleaned_rm_node_id']= str_ss_df['node_id'].map(get_node_id_rm_copy) --> Not Augmentation in Copy Index
 
+    df = str_ss_df.copy()
 
+    unique_list_agg = lambda x: sorted(list(set(x.dropna().astype(str))))
+    merge_ss_df = df.groupby('node_id').agg(unique_list_agg).reset_index()
+    merge_ss_df[str_cols] = merge_ss_df[str_cols].map(lambda x: x if x else np.nan)
 
+    print("[2] StrType SS Augmentation Done")
+
+    ################################################
+    # 3. Merge Float and Str SS and Save
+    ################################################
+    print("[3] Merge Float and Str SS and Save")
+    final_ss_df = pd.merge(merge_float_df, merge_ss_df, on='node_id', how='left')
+    final_ss_df.to_csv(f"{DATABASE}/processed_ss_df_v{today_date()}.csv", index=False)
+    print(f"Save Done in {DATABASE}/processed_ss_df_v{today_date()}.csv")
 
 
 if __name__ == "__main__":
