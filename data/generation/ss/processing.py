@@ -19,9 +19,15 @@ DATABASE = config.DATABASE
 def main():
     y_df = pd.read_csv(f"{DATABASE}/node_features_with_location_nodeid_v031026.csv")
 
+    # Load Graph for weighted Augmentation
+    finalG = load_graph((f"{DATABASE}/cleaned_weighted_graph.pkl"))
+    edge_df = nx.to_pandas_edgelist(finalG)
+
     ################################################
     # 1. Float SS Augmentation
     ################################################
+    T = 5.0 # For Temperature in NaN Augmentation (2)
+
     float_cols = ['rel_sasa', 'ss_helix', 'ss_sheet','ss_loop', 'depth', 'hse_up', 'hse_down',
                   'dssp_accessibility', 'dssp_TCO', 'dssp_kappa','dssp_alpha', 'dssp_phi', 'dssp_psi',]
 
@@ -42,26 +48,56 @@ def main():
 
     float_ss_df.reset_index(inplace=True)
 
-    # NaN Augmentation (2) - Neighbor based Augmentaiton
-    for col in float_cols:
-        na_rows = float_ss_df[float_ss_df[col].isna()]
-        
-        for idx, row in na_rows.iterrows():
-            u_id = row['uniprot']
-            res_type = row['res']
-            current_pos = row['pos']
-            mask = (
-                (float_ss_df['uniprot'] == u_id) & 
-                (float_ss_df['res'] == res_type) & 
-                (float_ss_df['pos'] >= current_pos - 20) & 
-                (float_ss_df['pos'] <= current_pos + 20)
-            )
-            
-            nearby_mean = float_ss_df.loc[mask, col].mean()
-            
-            if pd.notna(nearby_mean):
-                float_ss_df.at[idx, col] = nearby_mean
+    # NaN Augmentation (2) - Neighbor & Energy based Augmentaiton
 
+    edges_fwd = edge_df[['source', 'target', 'cleaned_total_energy']].rename(
+        columns={'source': 'node', 'target': 'neighbor'}
+    )
+    edges_rev = edge_df[['target', 'source', 'cleaned_total_energy']].rename(
+        columns={'target': 'node', 'source': 'neighbor'}
+    )
+    all_edges = pd.concat([edges_fwd, edges_rev], ignore_index=True)
+    all_edges['scaled_neg_energy'] = -all_edges['cleaned_total_energy'] / T
+
+    max_energy_per_node = all_edges.groupby('node')['scaled_neg_energy'].transform('max')
+
+    all_edges['safe_exponent'] = all_edges['scaled_neg_energy'] - max_energy_per_node
+    all_edges['weight'] = np.exp(all_edges['safe_exponent'])
+
+    edge_weights = all_edges.groupby(['node', 'neighbor'])['weight'].sum().reset_index()
+    float_ss_df = float_ss_df.set_index('node_id')
+
+    for col in float_cols:
+        print(f"[{col}] processing...")
+        
+        missing_nodes = float_ss_df[float_ss_df[col].isna()].index
+        
+        if len(missing_nodes) == 0:
+            continue
+            
+        rel_edges = edge_weights[edge_weights['node'].isin(missing_nodes)].copy()
+        
+
+        unique_mapping = float_ss_df.groupby(level=0)[col].mean()
+        rel_edges['neighbor_val'] = rel_edges['neighbor'].map(unique_mapping)
+        
+        valid_edges = rel_edges.dropna(subset=['neighbor_val'])
+        
+        if valid_edges.empty:
+            continue
+
+        valid_edges['weighted_val'] = valid_edges['neighbor_val'] * valid_edges['weight']
+        
+        agg_df = valid_edges.groupby('node').agg(
+            sum_val=('weighted_val', 'sum'),
+            sum_wt=('weight', 'sum')
+        )
+        
+        agg_df['weighted_mean'] = agg_df['sum_val'] / agg_df['sum_wt']
+        float_ss_df.loc[agg_df.index, col] = agg_df['weighted_mean']
+
+    float_ss_df = float_ss_df.reset_index()
+    float_ss_df.drop(columns=['uniprot', 'res', 'pos', 'cleaned_rm_node_id'], inplace=True)
     merge_float_df = float_ss_df.groupby('node_id').mean().reset_index()
 
     ################################################
@@ -77,10 +113,6 @@ def main():
     str_ss_df['cleaned_rm_node_id']= str_ss_df['node_id'].map(get_node_id_rm_copy)
 
 
-
-
-    
-    
 
 
 
