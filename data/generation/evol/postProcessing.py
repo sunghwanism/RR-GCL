@@ -35,7 +35,7 @@ def main(args):
         if fasta_file.endswith(".fasta"):
             protein_id = fasta_file.split(".")[0]
             fasta_path = os.path.join(args.fasta_dir, fasta_file)
-            output_hhm = os.path.join(args.hmm_dir, f"{protein_id}.hhm")
+            output_hhm = os.path.join(args.hhm_output_dir, f"{protein_id}.hhm")
             
             if not os.path.exists(output_hhm):
                 tasks.append((fasta_path, args.uniref_db_path, output_hhm))
