@@ -49,6 +49,7 @@ def run_single_psiblast(args):
         "-db", db_path,
         "-num_iterations", "3",
         "-evalue", "0.001",
+        "-num_threads", "4",
         "-matrix", "BLOSUM62",
         "-out_ascii_pssm", output_pssm
     ]
@@ -92,7 +93,7 @@ def run_single_hhblits(args):
         "-i", fasta_path,
         "-d", db_path,
         "-ohhm", output_hhm,
-        "-cpu", "1",
+        "-cpu", "4",
         "-n", "2",
         "-v", "0"
     ]
