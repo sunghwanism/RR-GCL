@@ -1,50 +1,48 @@
+import os
+from typing import List, Union
+
 import numpy as np
+import pandas as pd
+
+from utils.graphfunction import get_res_from_nodes, get_node_id_rm_copy
+from data.reference import residue3to1
 
 
-class CKACalculator:
-    def __init__(self, eps=1e-8):
-        self.eps = eps
+#################################
+# AAindex Processing Helper
+#################################
 
-    def normalize_rows(self, X):
-        mean = np.mean(X, axis=1, keepdims=True)
-        std = np.std(X, axis=1, keepdims=True)
-        return (X - mean) / (std + self.eps)
-
-    def _centering(self, K):
-        n = K.shape[0]
-        H = np.eye(n) - np.ones((n, n)) / n
-        return H @ K @ H
-
-    def _hsic(self, K, L):
-        K_c = self._centering(K)
-        L_c = self._centering(L)
-        return np.sum(K_c * L_c)
-
-    def score(self, X, Y, perform_normalization=True):
-        if perform_normalization:
-            X = self.normalize_rows(X)
-            Y = self.normalize_rows(Y)
-
-        K = X @ X.T
-        L = Y @ Y.T
-
-        hsic_kl = self._hsic(K, L)
-        hsic_kk = self._hsic(K, K)
-        hsic_ll = self._hsic(L, L)
-
-        return hsic_kl / np.sqrt(hsic_kk * hsic_ll + self.eps)
-
-def RVcoefficient(X, Y):
-
-    X = X - np.mean(X, axis=0)
-    Y = Y - np.mean(Y, axis=0)
+def get_aainfo(node_id: str, aaData: Union[pd.DataFrame, List[pd.DataFrame]]) -> List[float]:
+    """
+    Extract amino acid information from node_id and return corresponding AAindex data.
     
-    S_X = np.dot(X, X.T)
-    S_Y = np.dot(Y, Y.T)
+    Args:
+        node_id: Node ID in 'UniProtID_Position_ResType' format.
+        aaData: Amino acid index data (either a DataFrame or a list of DataFrames).
+        
+    Returns:
+        A list of extracted property values.
+    """
+    # 1. Extract residue type from node_id (e.g., 'glu' -> 'GLU')
+    res_type_3 = get_res_from_nodes(node_id).upper()
     
-    numerator = np.trace(np.dot(S_X, S_Y))
+    # 2. Convert 3-letter code to 1-letter code (e.g., 'GLU' -> 'E')
+    res_type_1 = residue3to1.get(res_type_3, 'X')
     
-    denominator = np.sqrt(np.trace(np.dot(S_X, S_X)) * np.trace(np.dot(S_Y, S_Y)))
-    
-    return numerator / denominator
-
+    # 3. Retrieve data
+    if isinstance(aaData, list):
+        # If it's a list, concatenate rows from all DataFrames for the given residue
+        all_features = []
+        for df in aaData:
+            if res_type_1 in df.index:
+                all_features.extend(df.loc[res_type_1].tolist())
+            else:
+                # Padding with zeros if residue not found
+                all_features.extend([0.0] * len(df.columns))
+        return all_features
+    else:
+        # If it's a single DataFrame
+        if res_type_1 in aaData.index:
+            return aaData.loc[res_type_1].tolist()
+        else:
+            return [0.0] * len(aaData.columns)

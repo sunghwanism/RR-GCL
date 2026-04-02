@@ -1,5 +1,7 @@
 import math
 import matplotlib.pyplot as plt
+
+import numpy as np
 import seaborn as sns
 import pandas as pd
 
@@ -115,3 +117,8 @@ def plot_value_counts(df, col_list, cols_per_row=3, top_n=20):
         
     plt.tight_layout()
     plt.show()
+
+def get_upper_triangle_values(matrix):
+    m = np.array(matrix)
+    upper_indices = np.triu_indices_from(m, k=0)
+    return m[upper_indices]
