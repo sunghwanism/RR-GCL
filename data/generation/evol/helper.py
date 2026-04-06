@@ -6,6 +6,7 @@ import json
 
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 from Bio import SearchIO
 from data.reference import residue1to3
@@ -86,14 +87,13 @@ def merge_hmm_to_json(input_dir, output_json):
     hhm_files = [f for f in os.listdir(input_dir) if f.endswith('.hhm')]
     print(f"Found {len(hhm_files)} HHM files. Starting process...")
 
-    for filename in hhm_files:
+    for filename in tqdm(hhm_files):
         file_path = os.path.join(input_dir, filename)
         df = hmm_to_df(file_path)
         
         if df is not None:
             for _, row in df.iterrows():
-                total_hhm_dict[row['ID']] = row[all_feature_cols].tolist()
-            print(f"Processed: {filename}")
+                total_hhm_dict[row['ID'].lower()] = row[all_feature_cols].tolist()
         else:
             print(f"Failed to process: {filename}")
 
@@ -139,28 +139,29 @@ def pssm_to_df(file_path):
 def merge_pssm_to_json(input_dir, output_json):
     total_pssm_dict = {}
     
-    amino_acids = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 
-                   'L', 'K', 'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V']
+    original_order = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 
+                      'L', 'K', 'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V']
     
-    feature_cols = ['Entropy'] + amino_acids
+    target_order = ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 
+                    'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y']
+    
+    feature_cols = target_order + ['Entropy']
     
     pssm_files = [f for f in os.listdir(input_dir) if f.endswith('.pssm')]
     print(f"Found {len(pssm_files)} PSSM files. Starting process...")
 
-    for filename in pssm_files:
+    for filename in tqdm(pssm_files):
         file_path = os.path.join(input_dir, filename)
-        
         df = pssm_to_df(file_path)
         
         if df is not None:
             for _, row in df.iterrows():
-                total_pssm_dict[row['ID']] = row[feature_cols].tolist()
-            print(f"Processed: {filename}")
+                total_pssm_dict[row['ID'].lower()] = row[feature_cols].tolist()
         else:
             print(f"Failed to process: {filename}")
 
     with open(output_json, 'w', encoding='utf-8') as jf:
         json.dump(total_pssm_dict, jf)
     
-    print(f"\nAll PSSM data saved to {output_json}")
-    print(f"Feature Dimension: {len(feature_cols)} (Entropy 1 + Log-odds 20)")
+    print(f"\nSuccessfully saved with Alphabetical Order.")
+    print(f"Order: {feature_cols}")
