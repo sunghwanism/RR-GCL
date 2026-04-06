@@ -46,3 +46,20 @@ def get_aainfo(node_id: str, aaData: Union[pd.DataFrame, List[pd.DataFrame]]) ->
             return aaData.loc[res_type_1].tolist()
         else:
             return [0.0] * len(aaData.columns)
+
+
+
+###############################################
+# Evolutionary Information Processing Helper
+###############################################
+
+def add_copy_evol_info(evol_dict, copy_node_id_list):
+    failed_node = []
+    updated_evol_dict = evol_dict.copy()
+    for c_node in copy_node_id_list:
+        try:
+            value = evol_dict[get_node_id_rm_copy(c_node)]
+            updated_evol_dict[c_node] = value
+        except:
+            failed_node.append(c_node)
+    return updated_evol_dict, failed_node

@@ -53,3 +53,11 @@ def get_res_from_nodes(node):
 
 def get_node_id_rm_copy(node):
     return get_uniprot_from_nodes(node) + "_" + get_pos_from_nodes(node) + "_" + get_res_from_nodes(node)
+
+def get_only_copy_node(nodes):
+    copy_nodes = []
+    for node in nodes:
+        if len(node.split("_")[0].split("-")) > 1:
+            copy_nodes.append(node)
+    return copy_nodes
+    
