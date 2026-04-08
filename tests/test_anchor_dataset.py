@@ -9,7 +9,6 @@ from data.anchor_dataset import (
     AnchorRelationDataset,
     NegativeSamplingConfig,
     RelationConfig,
-    SimilarityProvider,
     anchor_relation_collate,
 )
 
@@ -130,8 +129,66 @@ class AnchorDatasetTest(unittest.TestCase):
 
         dataset.set_epoch(4)
         c = dataset[1]
-        # Different epoch should allow different stochastic outcomes.
-        self.assertTrue(a["pos_node_ids"] != c["pos_node_ids"] or a["neg_node_ids"] != c["neg_node_ids"])
+        # Changed epoch still must satisfy invariants.
+        anchor = c["anchor_node_id"]
+        self.assertNotIn(anchor, c["pos_node_ids"])
+        self.assertNotIn(anchor, c["neg_node_ids"])
+        self.assertEqual(set(c["pos_node_ids"]).intersection(set(c["neg_node_ids"])), set())
+        self.assertEqual(len(c["neg_node_ids"]), len(c["neg_hardness"]))
+        for hardness in c["neg_hardness"]:
+            self.assertGreaterEqual(hardness, 0.0)
+            self.assertLessEqual(hardness, 1.0)
+
+    def test_sampling_diversity_across_epochs(self):
+        g1 = nx.Graph()
+        for idx in range(10):
+            g1.add_node(idx, node_id=f"a{idx}")
+        for idx in range(9):
+            g1.add_edge(idx, idx + 1)
+
+        g2 = nx.Graph()
+        for idx in range(10):
+            g2.add_node(idx, node_id=f"b{idx}")
+        for idx in range(9):
+            g2.add_edge(idx, idx + 1)
+
+        graphs = [g1, g2]
+
+        all_ids = [f"a{i}" for i in range(10)] + [f"b{i}" for i in range(10)]
+        mapping = {}
+        for node_id in all_ids:
+            candidates = list(all_ids)
+            scores = []
+            node_is_a = node_id.startswith("a")
+            for cand in candidates:
+                if cand == node_id:
+                    scores.append(1.0)
+                elif cand.startswith("a") == node_is_a:
+                    scores.append(0.7)
+                else:
+                    scores.append(0.2)
+            mapping[node_id] = (candidates, scores)
+
+        provider = DictSimilarityProvider(mapping)
+        relation_cfg = RelationConfig(
+            pos_strategy="topk",
+            pos_topk=8,
+            neg_strategy="topk",
+            neg_topk=8,
+            k_pos=3,
+            k_neg=4,
+        )
+        dataset = AnchorRelationDataset(graphs, provider, relation_cfg=relation_cfg, seed=1234)
+
+        anchor_index = dataset.eligible_anchor_ids.index("a0")
+        seen = set()
+        for epoch in range(8):
+            dataset.set_epoch(epoch)
+            sample = dataset[anchor_index]
+            signature = (tuple(sample["pos_node_ids"]), tuple(sample["neg_node_ids"]))
+            seen.add(signature)
+
+        self.assertGreaterEqual(len(seen), 2)
 
     def test_collate_ignore_rule(self):
         batch = [
