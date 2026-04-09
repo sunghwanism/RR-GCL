@@ -46,3 +46,25 @@ def get_aainfo(node_id: str, aaData: Union[pd.DataFrame, List[pd.DataFrame]]) ->
             return aaData.loc[res_type_1].tolist()
         else:
             return [0.0] * len(aaData.columns)
+
+
+
+###############################################
+# Homodimer Feature Copying Helper
+###############################################
+
+def add_copy_feat(feat_dict, copy_node_id_list):
+    failed_node = []
+    updated_feat_dict = feat_dict.copy()
+    for c_node in copy_node_id_list:
+        try:
+            value = feat_dict[get_node_id_rm_copy(c_node)]
+            updated_feat_dict[c_node] = value
+        except:
+            failed_node.append(c_node)
+    return updated_feat_dict, failed_node
+
+
+###############################################
+# AlphaMissense Processing Helper
+###############################################
