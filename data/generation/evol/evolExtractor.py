@@ -49,13 +49,13 @@ def run_single_psiblast(args):
         "-db", db_path,
         "-num_iterations", "3",
         "-evalue", "0.001",
-        "-num_threads", "4",
+        "-num_threads", "16",
         "-matrix", "BLOSUM62",
         "-out_ascii_pssm", output_pssm
     ]
     return subprocess.run(cmd, capture_output=True)
 
-def extract_pssm_parallel(fasta_dir, pssm_dir, db_path, max_workers=192, prefix=None):
+def extract_pssm_parallel(fasta_dir, pssm_dir, db_path, prefix=None):
     os.makedirs(pssm_dir, exist_ok=True)
     tasks = []
     db_path = os.path.join(db_path, "nr")
@@ -85,7 +85,10 @@ def extract_pssm_parallel(fasta_dir, pssm_dir, db_path, max_workers=192, prefix=
             fasta_path = os.path.join(fasta_dir, fasta_file)
             tasks.append((fasta_path, db_path, output_pssm))
 
-    actual_workers = min(max_workers, len(tasks)) if tasks else 1
+    total_allocated_cpus = len(os.sched_getaffinity(0)) 
+    cpus_per_psiblast = 16 # same with --num_threads in psiblast
+    actual_workers = total_allocated_cpus // cpus_per_psiblast
+    
     print(f"Starting parallel PSSM extraction {len(tasks)} with {actual_workers} workers...")
     with ProcessPoolExecutor(max_workers=actual_workers) as executor:
         list(executor.map(run_single_psiblast, tasks))
@@ -106,7 +109,7 @@ def run_single_hhblits(args):
         "-i", fasta_path,
         "-d", db_path,
         "-ohhm", output_hhm,
-        "-cpu", "4",
+        "-cpu", "16",
         "-n", "2",
         "-v", "0"
     ]
@@ -118,7 +121,7 @@ def run_single_hhblits(args):
     except subprocess.CalledProcessError as e:
         return f"Error in {os.path.basename(fasta_path)}: {e}"
 
-def extract_hmm_parallel(fasta_dir, hmm_dir, db_path, max_workers=192, prefix=None):
+def extract_hmm_parallel(fasta_dir, hmm_dir, db_path, prefix=None):
     os.makedirs(hmm_dir, exist_ok=True)
     
     tasks = []
@@ -148,7 +151,11 @@ def extract_hmm_parallel(fasta_dir, hmm_dir, db_path, max_workers=192, prefix=No
             tasks.append((full_fasta_path, db_path, output_hhm))         
 
     results = []
-    actual_workers = min(max_workers, len(tasks)) if tasks else 1
+
+    total_allocated_cpus = len(os.sched_getaffinity(0)) 
+    cpus_per_hhblits = 16 # same with --num_threads in hhblits
+    actual_workers = total_allocated_cpus // cpus_per_hhblits
+
     print(f"Starting parallel HMM extraction {len(tasks)} with {actual_workers} workers...")
     with ProcessPoolExecutor(max_workers=actual_workers) as executor:
         results = list(executor.map(run_single_hhblits, tasks))
@@ -166,7 +173,6 @@ if __name__ == "__main__":
     parser.add_argument("--uniref_db_path", type=str, help="path to uniref database")
     parser.add_argument("--pssm_dir", type=str, help="path to pssm directory for saving")
     parser.add_argument("--hmm_dir", type=str, help="path to hmm directory for saving")
-    parser.add_argument("--workers", type=int, default=os.cpu_count(), help="number of parallel workers")
     parser.add_argument('--jobs', nargs='+', choices=['split', 'pssm', 'hmm'], help="jobs to run [split, pssm, hmm]")
     parser.add_argument('--prefix', type=str, default=None, help="prefix for fasta files")
     args = parser.parse_args()
@@ -183,7 +189,7 @@ if __name__ == "__main__":
         print("Run pssm job")
         assert args.nr_db_path is not None, "nr_db_path is required for pssm job"
         assert args.pssm_dir is not None, "pssm_dir is required for pssm job"
-        extract_pssm_parallel(args.fasta_dir, args.pssm_dir, args.nr_db_path, max_workers=args.workers, prefix=args.prefix)
+        extract_pssm_parallel(args.fasta_dir, args.pssm_dir, args.nr_db_path, prefix=args.prefix)
         print("###################")
         print("PSSM is done")
         print("###################")
@@ -192,7 +198,7 @@ if __name__ == "__main__":
         print("Run hmm job")
         assert args.uniref_db_path is not None, "uniref_db_path is required for hmm job"
         assert args.hmm_dir is not None, "hmm_dir is required for hmm job"
-        extract_hmm_parallel(args.fasta_dir, args.hmm_dir, args.uniref_db_path, max_workers=args.workers, prefix=args.prefix)
+        extract_hmm_parallel(args.fasta_dir, args.hmm_dir, args.uniref_db_path, prefix=args.prefix)
         print("###################")
         print("Finish HMM job")
         print("###################")
