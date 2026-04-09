@@ -124,37 +124,37 @@ def build_dataset(uniprot_ids: list) -> pd.DataFrame:
             continue
 
         for v in variants:
-                    if v.get("consequence") != "missense_variant":
-                        continue
+            if v.get("consequence") != "missense_variant":
+                continue
 
-                    ref_aa, pos, alt_aa = parse_hgvsp(v.get("hgvsp"))
-                    if pos is None:
-                        continue
+            ref_aa, pos, alt_aa = parse_hgvsp(v.get("hgvsp"))
+            if pos is None:
+                continue
 
-                    ac = 0
-                    an = 0
-                    
-                    if v.get("exome"):
-                        ac += v["exome"].get("ac") or 0
-                        an += v["exome"].get("an") or 0
-                    
-                    if v.get("genome"):
-                        ac += v["genome"].get("ac") or 0
-                        an += v["genome"].get("an") or 0
+            ac = 0
+            an = 0
+            
+            if v.get("exome"):
+                ac += v["exome"].get("ac") or 0
+                an += v["exome"].get("an") or 0
+            
+            if v.get("genome"):
+                ac += v["genome"].get("ac") or 0
+                an += v["genome"].get("an") or 0
 
-                    af = ac / an if an > 0 else None
+            af = ac / an if an > 0 else None
 
-                    all_records.append({
-                        "uniprot_id": uid,
-                        "enst_id": enst,
-                        "gene_symbol": gene_symbol,
-                        "residuetype": AA1TO3[AA3TO1[ref_aa.upper()]].lower(),
-                        "position": pos,
-                        "alt_aa": AA1TO3[AA3TO1[alt_aa.upper()]].lower(),
-                        "allele_count": ac,
-                        "allele_number": an,
-                        "allele_frequency": af
-                    })
+            all_records.append({
+                "uniprot_id": uid,
+                "enst_id": enst,
+                "gene_symbol": gene_symbol,
+                "residuetype": AA1TO3[AA3TO1[ref_aa.upper()]].lower(),
+                "position": pos,
+                "alt_aa": AA1TO3[AA3TO1[alt_aa.upper()]].lower(),
+                "allele_count": ac,
+                "allele_number": an,
+                "allele_frequency": af
+            })
 
         time.sleep(5)  # Rate limit prevention
 
@@ -163,8 +163,7 @@ def build_dataset(uniprot_ids: list) -> pd.DataFrame:
     if df.empty:
         print("No variants collected.")
         return df
-
-    # Build variant dict: {mutant_type: allele_count, ...}
+ㅂ
     variant_dict = (
             df.groupby(["uniprot_id", "enst_id", "gene_symbol", "residuetype", "position"])
             .apply(lambda g: g.groupby("alt_aa")["allele_count"].sum().to_dict())
