@@ -165,3 +165,45 @@ def merge_pssm_to_json(input_dir, output_json):
     
     print(f"\nSuccessfully saved with Alphabetical Order.")
     print(f"Order: {feature_cols}")
+
+
+def find_incomplete_pssm_files(directory_path):
+    """
+    Scans for .pssm files in the given directory that are missing 
+    the 'PSI Gapped' statistics section.
+    """
+    incomplete_files = []
+
+    try:
+        # Filter for .pssm files only
+        files = [f for f in os.listdir(directory_path) if f.endswith('.pssm')]
+    except FileNotFoundError:
+        print(f"Error: Path not found -> {directory_path}")
+        return []
+
+    print(f"Scanning {len(files)} PSSM files...")
+
+    for filename in files:
+        file_path = os.path.join(directory_path, filename)
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # OPTIMIZATION: PSSM stats are always at the bottom.
+                # Reading the entire file is heavy on memory; 
+                # instead, we check the tail end of the file.
+                f.seek(0, os.SEEK_END)
+                file_size = f.tell()
+                # Read the last 1000 characters
+                read_size = min(file_size, 1000)
+                f.seek(file_size - read_size)
+                
+                content = f.read()
+                
+                # Check for the keyword "PSI Gapped"
+                if "PSI Gapped" not in content:
+                    incomplete_files.append(filename)
+                    
+        except Exception as e:
+            print(f"Error reading file ({filename}): {e}")
+
+    return incomplete_files
