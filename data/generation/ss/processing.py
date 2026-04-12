@@ -17,8 +17,9 @@ DATABASE = config.DATABASE
 
 
 def main():
+
     print("[0] Load Data")
-    y_df = pd.read_csv(f"{DATABASE}/node_features_with_location_nodeid_v031026.csv")
+    y_df = pd.read_csv(f"{DATABASE}/node_features_with_location_w_nodeid_v041026.csv")
 
     # Load Graph for weighted Augmentation
     finalG = load_graph((f"{DATABASE}/cleaned_weighted_graph.pkl"))
