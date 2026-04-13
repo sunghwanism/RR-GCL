@@ -1,12 +1,14 @@
 import math
+import numpy as np
 import pandas as pd
+
 from sklearn.decomposition import PCA
 
 def sin_cos_transform(df, colname, rot_type):
     if rot_type == 'sin':
-        df[colname] = np.sin(df[colname] * np.pi / 180)
+        df[f'{colname}_sin'] = np.sin(df[colname] * np.pi / 180)
     elif rot_type == 'cos':
-        df[colname] = np.cos(df[colname] * np.pi / 180)
+        df[f'{colname}_cos'] = np.cos(df[colname] * np.pi / 180)
     else:
         raise ValueError("rot_type must be 'sin' or 'cos'")
     return df
@@ -29,5 +31,9 @@ def all_standard_scale(df):
 def pca_transform(df, cols, n_components):
     pca = PCA(n_components=n_components)
     pca.fit(df[cols])
-    df[cols] = pca.transform(df[cols])
-    return df
+    pca_features = pca.transform(df[cols])
+    pca_cols = [f'{cols[0].split("_")[0]}_PCA{i}' for i in range(pca.n_components_)]
+    pca_df = pd.DataFrame(pca_features, columns=pca_cols, index=df.index)
+    pca_df['node_id'] = df['node_id']
+
+    return pca_df, pca

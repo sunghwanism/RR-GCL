@@ -25,6 +25,8 @@ def ss_aug(df, aug_cols, num_ref=10):
         elif col == 'dssp_TCO':
             aug_df = impute_local_mean(aug_df, col, num_ref)
 
+    aug_df.drop(columns=['uniprot', 'pos'], inplace=True)
+    
     return aug_df
 
 def impute_local_mean(df, colname, window_size=10):
