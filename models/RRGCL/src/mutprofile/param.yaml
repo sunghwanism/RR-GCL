@@ -1,0 +1,9 @@
+neighbor:
+  eps: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  min_cluster_size: [3, 4, 5, 6, 7, 8, 9, 10,11, 12, 13, 14, 15]
+  used_cols: ['rel_sasa', 'depth', 'hse_up', 'hse_down', 'dssp_phi_sin', 'dssp_alpha_sin', 'dssp_phi_cos', 'dssp_alpha_cos']
+
+residue:
+  eps: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  min_cluster_size: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+  used_cols: ['rel_sasa', 'depth', 'hse_up', 'hse_down', 'dssp_phi_sin', 'dssp_alpha_sin', 'dssp_phi_cos', 'dssp_alpha_cos']
