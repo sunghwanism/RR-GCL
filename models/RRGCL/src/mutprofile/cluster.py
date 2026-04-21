@@ -72,7 +72,16 @@ def load_data(DATABASE, target, used_cols):
         aug_ss_df = sin_cos_transform(aug_ss_df, 'dssp_alpha', 'cos')
         aug_ss_df.drop(['dssp_alpha'], axis=1, inplace=True)
 
+    ss_pca_cols = [c for c in used_cols if 'sin' in c or 'cos' in c]
+    used_cols_updated = [c for c in used_cols if c not in ss_pca_cols]
+
+    ss_pca_df, ss_pca = pca_transform(aug_ss_df, ss_pca_cols, 3)
+    print("SS Explained variance:", ss_pca.explained_variance_ratio_)
+
+    aug_cols_to_keep = ['node_id'] + [c for c in used_cols_updated if c in aug_ss_df.columns]
+    aug_ss_df = aug_ss_df[aug_cols_to_keep]
     feat_for_sim = pd.merge(aug_ss_df, pca_aa1_df, on='node_id', how='left')
+    feat_for_sim = pd.merge(feat_for_sim, ss_pca_df, on='node_id', how='left')
 
     # Correlation Visualization
     print("Generating correlation visualization...")
@@ -82,13 +91,18 @@ def load_data(DATABASE, target, used_cols):
     sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
     plt.title('Clustering Features Correlation Heatmap')
     plt.tight_layout()
-    plt.savefig('clustering_feat_corr.png', dpi=600, bbox_inches='tight')
+    
+    asset_dir = f'asset/{target}'
+    os.makedirs(asset_dir, exist_ok=True)
+    plt.savefig(f'{asset_dir}/{target}_clustering_feat_corr.png', dpi=600, bbox_inches='tight')
     plt.close()
 
     # Feature Selection
-    aa1_pca_col = list(pca_aa1_df.columns)
+    aa1_pca_col = [c for c in pca_aa1_df.columns if c != 'node_id']
+    ss_pca_col = [c for c in ss_pca_df.columns if c != 'node_id']
 
-    sim_cols = aa1_pca_col + used_cols
+    # Combine columns without duplicates
+    sim_cols = ['node_id'] + aa1_pca_col + ss_pca_col + [c for c in used_cols_updated if c not in aa1_pca_col and c != 'node_id']
 
     final_sim_df = feat_for_sim[sim_cols]
 
@@ -105,10 +119,12 @@ def load_data(DATABASE, target, used_cols):
 
     return node_X_scaled, final_sim_df['node_id']
 
-def evaluate_hdbscan(eps, mcs, node_feat_scaled):
+def evaluate_hdbscan(eps, mcs, mss, csm, node_feat_scaled):
     clusterer = hdbscan.HDBSCAN(
         cluster_selection_epsilon=eps,
         min_cluster_size=mcs,
+        min_samples=mss,
+        cluster_selection_method=csm,
         gen_min_span_tree=True
     )
     labels = clusterer.fit_predict(node_feat_scaled)
@@ -128,18 +144,20 @@ def evaluate_hdbscan(eps, mcs, node_feat_scaled):
     return {
         'eps': eps,
         'min_cluster_size': mcs,
+        'min_sample_size': mss,
+        'cluster_selection_method': csm,
         'DBCV': dbcv_score,
         'noise_ratio': noise_ratio,
         'num_clusters': num_clusters
     }
 
-def grid_search(node_feat_scaled, node_ids, target, eps_range, min_cluster_range, n_jobs=1):
+def grid_search(node_feat_scaled, node_ids, target, eps_range, min_cluster_range, min_sample_range, cluster_selection_method, n_jobs=1):
     print(f"Starting grid search for HDBSCAN parameters (n_jobs={n_jobs})...")
     
-    param_grid = list(itertools.product(eps_range, min_cluster_range))
+    param_grid = list(itertools.product(eps_range, min_cluster_range, min_sample_range))
     
     results = Parallel(n_jobs=n_jobs)(
-        delayed(evaluate_hdbscan)(eps, mcs, node_feat_scaled) for eps, mcs in tqdm(param_grid, desc="Grid Search")
+        delayed(evaluate_hdbscan)(eps, mcs, mss, cluster_selection_method, node_feat_scaled) for eps, mcs, mss in tqdm(param_grid, desc="Grid Search")
     )
 
     results_df = pd.DataFrame(results)
@@ -151,12 +169,16 @@ def grid_search(node_feat_scaled, node_ids, target, eps_range, min_cluster_range
     print(best_params)
 
     for idx, row in best_params.iterrows():
-        eps = row['eps']
+        eps = float(row['eps'])
         mcs = int(row['min_cluster_size'])
+        mss = int(row['min_sample_size'])
+        csm = row['cluster_selection_method']
         
         clusterer = hdbscan.HDBSCAN(
             cluster_selection_epsilon=eps,
             min_cluster_size=mcs,
+            min_samples=mss,
+            cluster_selection_method=csm,
             gen_min_span_tree=True
         )
         
@@ -165,19 +187,21 @@ def grid_search(node_feat_scaled, node_ids, target, eps_range, min_cluster_range
         pd.DataFrame({
             'node_id': node_ids,
             'cluster_label': labels
-        }).to_csv(f"{target}_cluster_labels_eps{eps}_mcs{mcs}.csv", index=False)
+        }).to_csv(f"{target}_cluster_labels_eps{eps}_mcs{mcs}_mss{mss}_{csm}.csv", index=False)
         
-        print(f"Saved: {target}_cluster_labels_eps{eps}_mcs{mcs}.csv")
+        print(f"Saved: {target}_cluster_labels_eps{eps}_mcs{mcs}_mss{mss}_{csm}.csv")
 
     return results_df
 
-def elbow_plot(df, eps_range, metric="DBCV", target="residue"):
+def elbow_plot(df, eps_range, cluster_selection_method, metric="DBCV", target="residue"):
+    asset_dir = f'asset/{target}'
+    os.makedirs(asset_dir, exist_ok=True)
     for eps in eps_range:
         plt.figure(figsize=(8, 5))
         eps_df = df[df['eps'] == eps]
-        sns.lineplot(data=eps_df, x="min_cluster_size", y=metric, marker="o")
+        sns.lineplot(data=eps_df, x="min_cluster_size", y=metric, hue="min_sample_size", marker="o")
         plt.title(f"Elbow Plot for eps = {eps}")
-        plt.savefig(f'{target}_elbow_plot_{metric}_{eps}.png', dpi=600, bbox_inches='tight')
+        plt.savefig(f'{asset_dir}/{cluster_selection_method}_elbow_plot_{metric}_{eps}.png', dpi=600, bbox_inches='tight')
         plt.close()
 
 if __name__ == "__main__":
@@ -195,6 +219,8 @@ if __name__ == "__main__":
 
     eps_range = target_param['eps']
     min_cluster_range = target_param['min_cluster_size']
+    min_sample_range = target_param['min_sample_size']
+    cluster_selection_method = target_param['cluster_selection_method']
 
     if args.target == 'neighbor':
         print(f"Starting clustering pipeline for target: {args.target}")
@@ -211,10 +237,10 @@ if __name__ == "__main__":
             feat_scaled, node_ids = load_data(DATABASE, args.target, target_param['used_cols'])
 
     print("Running HDBSCAN grid search...")
-    results_df = grid_search(feat_scaled, node_ids, args.target, eps_range, min_cluster_range, args.n_jobs)
+    results_df = grid_search(feat_scaled, node_ids, args.target, eps_range, min_cluster_range, min_sample_range, cluster_selection_method, args.n_jobs)
     
     print("Generating elbow plots...")
-    elbow_plot(results_df, eps_range, metric="DBCV", target=args.target)
-    elbow_plot(results_df, eps_range, metric="noise_ratio", target=args.target)
-    elbow_plot(results_df, eps_range, metric="num_clusters", target=args.target)
+    elbow_plot(results_df, eps_range, cluster_selection_method, metric="DBCV", target=args.target)
+    elbow_plot(results_df, eps_range, cluster_selection_method, metric="noise_ratio", target=args.target)
+    elbow_plot(results_df, eps_range, cluster_selection_method, metric="num_clusters", target=args.target)
     print("Pipeline completed successfully.")
