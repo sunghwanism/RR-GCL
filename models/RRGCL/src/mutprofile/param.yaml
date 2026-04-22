@@ -1,13 +1,13 @@
 neighbor:
-  eps: [0.0001, 0.001, 0.01, 0]
+  eps: [0, 0.1, 0.15, 0.2]
   min_cluster_size: [3, 4, 5, 6, 7, 8, 9, 10]
   min_sample_size: [1, 2, 3, 4, 5,]
-  cluster_selection_method: 'leaf' # leaf or eom
-  used_cols: ['rel_sasa', 'depth', 'hse_up', 'hse_down', 'dssp_phi_sin', 'dssp_phi_cos', 'dssp_psi_sin', 'dssp_psi_cos', 'dssp_alpha_sin', 'dssp_alpha_cos', 'aa1_PCA0', 'aa1_PCA1' ]
+  cluster_selection_method: ['leaf', 'eom']
+  cluster_cols: ['aa1_KYTJ820101', 'aa1_KLEP840101', 'aa1_BHAR880101', 'aa1_JANJ780101', 'aa1_CHOP780201', 'aa1_GRAR740102', 'aa1_GRAR740103', 'rel_sasa', 'depth', 'hse_up', 'hse_down', 'dssp_accessibility', 'dssp_TCO', 'dssp_alpha', 'dssp_phi', 'dssp_psi']
 
 residue:
-  eps: [0.0001, 0.001, 0.01, 0]
-  min_cluster_size: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-  min_sample_size: [1, 2, 3, 4, 5,]
-  cluster_selection_method: 'leaf' # leaf or eom
-  used_cols: ['rel_sasa', 'depth', 'hse_up', 'hse_down', 'dssp_phi_sin', 'dssp_phi_cos', 'dssp_alpha_sin', 'dssp_alpha_cos', 'aa1_PCA0', 'aa1_PCA1' ]
+  eps: [0, 0.1, 0.15, 0.2]
+  min_cluster_size: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  min_sample_size: [1, 2, 3, 4, 5]
+  cluster_selection_method: ['leaf', 'eom']
+  cluster_cols: ['aa1_KYTJ820101', 'aa1_KLEP840101', 'aa1_BHAR880101', 'aa1_JANJ780101', 'aa1_CHOP780201', 'aa1_GRAR740102', 'aa1_GRAR740103', 'rel_sasa', 'depth', 'hse_up', 'hse_down', 'dssp_accessibility', 'dssp_TCO', 'dssp_alpha', 'dssp_phi', 'dssp_psi']
