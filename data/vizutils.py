@@ -107,7 +107,7 @@ def plot_value_counts(df, col_list, cols_per_row=3, top_n=20):
                 ax.annotate(f'{int(height)}', 
                             (p.get_x() + p.get_width() / 2., height), 
                             ha='center', va='center', 
-                            fontsize=10, color='black', 
+                            fontsize=8, color='black', 
                             xytext=(0, 7), 
                             textcoords='offset points')
             
@@ -122,3 +122,21 @@ def get_upper_triangle_values(matrix):
     m = np.array(matrix)
     upper_indices = np.triu_indices_from(m, k=0)
     return m[upper_indices]
+
+
+def plot_cluster_distribution(cluster_df, target_col, grid_rows=4, grid_cols=3):
+    clusters = cluster_df['cluster'].unique()
+    clusters.sort()
+    
+    fig, axes = plt.subplots(grid_rows, grid_cols, figsize=(grid_cols * 4, grid_rows * 3))
+    axes = axes.ravel()
+    
+    for i, clt in enumerate(clusters[:grid_rows * grid_cols]):
+        data = cluster_df[cluster_df['cluster'] == clt][target_col]
+        counts = data.value_counts()
+        sns.barplot(x=counts.index, y=counts.values, ax=axes[i], palette='viridis')
+        axes[i].set_title(f"Cluster {clt}")
+        axes[i].tick_params(axis='x', rotation=45)
+        
+    plt.tight_layout()
+    plt.show()
