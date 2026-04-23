@@ -15,8 +15,9 @@ from data.neighborExtractor import extract_neighbor_features_parallel
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, default='config/RRGCL.yaml')
-    parser.add_argument('--save_path', type=str, default='data/proc_data/ngb_weighted_avg_feat.csv')
+    parser.add_argument('--save_dir', type=str, default='data/proc_data')
     parser.add_argument('--n_jobs', type=int)
+    parser.add_argument('--method', type=str, default='weighted_mean', help='weighted_mean or orthogonal_proj')
     return parser.parse_args()
 
 
@@ -41,10 +42,14 @@ def main(args):
         n_jobs = os.cpu_count() - 1
     print("--> Run NUM CPUS", n_jobs)
 
-    org_ngb_feat_df, failed_nodes = extract_neighbor_features_parallel(org_res_feat_df, finalG, n_jobs=n_jobs)
-    org_ngb_feat_df.to_csv(args.save_path, index=False)
+    org_ngb_feat_df, failed_nodes = extract_neighbor_features_parallel(org_res_feat_df, finalG, method=args.method, n_jobs=n_jobs)
 
-    with open('data/failed_calc_neighbor.py', 'w') as f:
+    # Save
+    saveName = f"{args.save_dir}/ngb_{args.method}_feat.csv"
+    os.makedirs(os.path.dirname(saveName), exist_ok=True)
+    org_ngb_feat_df.to_csv(saveName, index=False)
+
+    with open(f'{args.save_dir}/failed_calc_neighbor_{args.method}.py', 'w') as f:
         f.write(f"failed_nodes = {failed_nodes}\n")
 
     end = time.time()

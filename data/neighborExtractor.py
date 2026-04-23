@@ -11,7 +11,7 @@ from utils.graphfunction import get_uniprot_from_nodes
 from tqdm import tqdm
 
 
-def extract_neighbor_features(feat_df, graph, weight_key='weight'):
+def extract_neighbor_features(feat_df, graph, weight_key='weight', method='weighted_mean'):
     """
     Build a neighbor feature table from node features and a graph.
 
@@ -95,6 +95,7 @@ def extract_neighbor_features(feat_df, graph, weight_key='weight'):
             norm_weights = np.ones_like(weights) / len(weights)
 
         # Float columns: weighted average using normalized weights
+        x_neigh_dict = {}
         for col in float_cols:
             neighbor_values = feat_df.loc[neighbor_indices, col].values.astype(float)
             # Handle NaN in neighbor values
@@ -106,11 +107,32 @@ def extract_neighbor_features(feat_df, graph, weight_key='weight'):
                 valid_w_sum = valid_w.sum()
                 if valid_w_sum > 0:
                     valid_w = valid_w / valid_w_sum
-                    new_row[col] = np.dot(valid_w, valid_vals)
+                    x_neigh_dict[col] = np.dot(valid_w, valid_vals)
                 else:
-                    new_row[col] = np.nan
+                    x_neigh_dict[col] = np.nan
             else:
-                new_row[col] = np.nan
+                x_neigh_dict[col] = np.nan
+
+        if method == 'orthogonal_proj' and float_cols:
+            x_neigh = np.array([x_neigh_dict[col] for col in float_cols], dtype=float)
+            x_i = row[float_cols].values.astype(float)
+            
+            valid_mask = ~np.isnan(x_neigh) & ~np.isnan(x_i)
+            if valid_mask.any():
+                x_neigh_v = x_neigh[valid_mask]
+                x_i_v = x_i[valid_mask]
+                
+                norm_sq = np.dot(x_i_v, x_i_v)
+                if norm_sq > 1e-12:
+                    proj_scale = np.dot(x_neigh_v, x_i_v) / norm_sq
+                    proj_v = x_neigh_v - proj_scale * x_i_v
+                    x_neigh[valid_mask] = proj_v
+            
+            for i, col in enumerate(float_cols):
+                new_row[col] = x_neigh[i]
+        else:
+            for col in float_cols:
+                new_row[col] = x_neigh_dict[col]
 
         # String columns: extract unique values
         for col in str_cols:
@@ -157,7 +179,7 @@ def extract_neighbor_features(feat_df, graph, weight_key='weight'):
 
     return result_df, failed_nodes
 
-def _process_chunk(chunk_df, full_feat_df, graph, node_id_to_idx, float_cols, str_cols, weight_key):
+def _process_chunk(chunk_df, full_feat_df, graph, node_id_to_idx, float_cols, str_cols, weight_key, method):
     result_rows = []
     failed_nodes = []
     
@@ -200,6 +222,7 @@ def _process_chunk(chunk_df, full_feat_df, graph, node_id_to_idx, float_cols, st
             else:
                 norm_weights = np.ones_like(weights) / len(weights)
 
+            x_neigh_dict = {}
             for col in float_cols:
                 vals = full_feat_df.loc[neighbor_indices, col].values.astype(float)
                 mask = ~np.isnan(vals)
@@ -208,11 +231,32 @@ def _process_chunk(chunk_df, full_feat_df, graph, node_id_to_idx, float_cols, st
                     valid_w_sum = valid_w.sum()
                     if valid_w_sum > 0:
                         valid_w = valid_w / valid_w_sum
-                        new_row[col] = np.dot(valid_w, vals[mask])
+                        x_neigh_dict[col] = np.dot(valid_w, vals[mask])
                     else:
-                        new_row[col] = np.nan
+                        x_neigh_dict[col] = np.nan
                 else:
-                    new_row[col] = np.nan
+                    x_neigh_dict[col] = np.nan
+
+            if method == 'orthogonal_proj' and float_cols:
+                x_neigh = np.array([x_neigh_dict[col] for col in float_cols], dtype=float)
+                x_i = row[float_cols].values.astype(float)
+                
+                valid_mask = ~np.isnan(x_neigh) & ~np.isnan(x_i)
+                if valid_mask.any():
+                    x_neigh_v = x_neigh[valid_mask]
+                    x_i_v = x_i[valid_mask]
+                    
+                    norm_sq = np.dot(x_i_v, x_i_v)
+                    if norm_sq > 1e-12:
+                        proj_scale = np.dot(x_neigh_v, x_i_v) / norm_sq
+                        proj_v = x_neigh_v - proj_scale * x_i_v
+                        x_neigh[valid_mask] = proj_v
+                
+                for i, col in enumerate(float_cols):
+                    new_row[col] = x_neigh[i]
+            else:
+                for col in float_cols:
+                    new_row[col] = x_neigh_dict[col]
 
             for col in str_cols:
                 raw_vals = full_feat_df.loc[neighbor_indices, col].values
@@ -253,7 +297,7 @@ def _process_chunk(chunk_df, full_feat_df, graph, node_id_to_idx, float_cols, st
     
     return result_rows, failed_nodes
 
-def extract_neighbor_features_parallel(feat_df, graph, weight_key='weight', n_jobs=-1, chunk_size=5000):
+def extract_neighbor_features_parallel(feat_df, graph, weight_key='weight', method='weighted_mean', n_jobs=-1, chunk_size=5000):
     """
     Extract neighbor features in parallel. 
     Uses chunk_size to balance load across cores and avoid memory overflow.
@@ -276,7 +320,7 @@ def extract_neighbor_features_parallel(feat_df, graph, weight_key='weight', n_jo
     # Using 'loky' backend is recommended for robust process-based parallelism
     results = Parallel(n_jobs=num_cores, backend="loky")(
         delayed(_process_chunk)(
-            chunk, feat_df, graph, node_id_to_idx, float_cols, str_cols, weight_key
+            chunk, feat_df, graph, node_id_to_idx, float_cols, str_cols, weight_key, method
         ) for chunk in tqdm(chunks, desc="Processing Graph Chunks", total=len(chunks), unit="chunk")
     )
 
