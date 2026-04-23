@@ -28,7 +28,7 @@ def ss_aug(df, aug_cols, num_ref=10, mode='pos', graph=None):
     for col in aug_cols:
         if col in ('rel_sasa', 'depth', 'hse_up', 'hse_down',
                    'dssp_phi', 'dssp_psi', 'dssp_alpha',
-                   'dssp_TCO', 'dssp_accessibility'):
+                   'dssp_TCO', 'dssp_accessibility', 'ss_helix', 'ss_sheet', 'ss_loop'):
             if mode == 'pos':
                 aug_df = impute_local_mean(aug_df, col, num_ref)
             elif mode == 'neighbor':

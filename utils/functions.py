@@ -82,3 +82,21 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
     np.random.seed(seed)
     random.seed(seed)
+
+def get_optimized_n_jobs(n_jobs_input):
+    """
+    Check if running under Slurm and return the allocated CPU count.
+    If not in Slurm, return the user-specified n_jobs or CPU count.
+    """
+    # Check if 'SLURM_CPUS_ON_NODE' exists (Slurm allocation variable)
+    slurm_cpus = os.getenv('SLURM_CPUS_ON_NODE')
+    
+    if slurm_cpus:
+        # Use Slurm's exact allocation
+        allocated_cpus = int(slurm_cpus)
+        print(f"Slurm detected: Using allocated {allocated_cpus} CPUs.")
+        return allocated_cpus
+    else:
+        # Fallback to local CPU count if not in Slurm
+        print("Slurm not detected: Using default system CPUs.")
+        return multiprocessing.cpu_count() if n_jobs_input == -1 else n_jobs_input - 1
