@@ -224,7 +224,7 @@ if __name__ == "__main__":
         assert 'ngb' in args.feat_path, "Feature path must contain 'ngb' for neighbor clustering"
     elif args.target == 'residue':
         target_param = param.residue
-        assert 'rs' in args.feat_path, "Feature path must contain 'rs' for residue clustering"
+        assert 'res' in args.feat_path, "Feature path must contain 'rs' for residue clustering"
     else:
         raise ValueError(f"Invalid target: {args.target}")
 
