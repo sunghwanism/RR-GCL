@@ -32,13 +32,15 @@ def load_data(FEAT_PATH, target):
     print(f"Loading data from {FEAT_PATH}...")
     feat_df = pd.read_csv(FEAT_PATH)
 
+    # evol_df = feat_df[['node_id','pssm_entropy', 'hmm_neff']]
+
     # 1. AA1 PCA
     print("Extracting and PCA transforming AA1 features...")
     aa1_cols = [col for col in feat_df.columns if col.startswith('aa1') and col != 'aa1']
     aa1_df = feat_df[['node_id'] + aa1_cols].copy()
     aa1_df[aa1_cols] = StandardScaler().fit_transform(aa1_df[aa1_cols])
     pca_aa1_df, _ = pca_transform(aa1_df, aa1_cols, 2)
-
+    
     # 2. Secondary Structure
     print("Extracting and PCA transforming Secondary Structure features...")
     ss_cols = ['rel_sasa', 'depth', 'hse_up', 'hse_down', 'dssp_accessibility', 'dssp_TCO', 'dssp_alpha', 'dssp_phi', 'dssp_psi']
@@ -57,7 +59,8 @@ def load_data(FEAT_PATH, target):
     pca_ss_df1, _ = pca_transform(ss_df, ss_pca_cols1, 2)
     
     if target == 'neighbor':
-        pca_ss_df2, _ = pca_transform(ss_df, ss_pca_cols2, 4)
+        # pca_ss_df2, _ = pca_transform(ss_df, ss_pca_cols2, 4) # for otrhogonal feature
+        pca_ss_df2, _ = pca_transform(ss_df, ss_pca_cols2, 2)
     else:
         pca_ss_df2, _ = pca_transform(ss_df, ss_pca_cols2, 2)
 
@@ -67,10 +70,23 @@ def load_data(FEAT_PATH, target):
     cluster_feat_df = pd.merge(cluster_feat_df, pca_aa1_df, on='node_id', how='left')
     cluster_feat_df = pd.merge(cluster_feat_df, pca_ss_df1, on='node_id', how='left')
     cluster_feat_df = pd.merge(cluster_feat_df, pca_ss_df2, on='node_id', how='left')
+    
+    # Evolutionary Information
+    # cluster_feat_df = pd.merge(cluster_feat_df, evol_df, on='node_id', how='left')
+    ## For orthogonal feature
+    # if target == 'neighbor':
+    #     cluster_feat_df.drop(['hmm_neff'], axis=1, inplace=True)
 
-    if target == 'neighbor':
-        ngb_specific_cols = ['ss_helix', 'ss_sheet', 'ss_loop']
-        cluster_feat_df = pd.merge(cluster_feat_df, feat_df[['node_id'] + ngb_specific_cols], on='node_id', how='left')
+    # if target == 'neighbor':
+    #     ngb_specific_cols = ['ss_helix', 'ss_sheet', 'ss_loop']
+    #     cluster_feat_df = pd.merge(cluster_feat_df, feat_df[['node_id'] + ngb_specific_cols], on='node_id', how='left')
+
+    # if target == 'neighbor':
+    #     ngb_specific_cols = ['ss_helix', 'ss_sheet', 'ss_loop']
+    #     feat_df[ngb_specific_cols] = StandardScaler().fit_transform(feat_df[ngb_specific_cols])
+    #     pca_ss_df3, pca_ss3 = pca_transform(feat_df, ngb_specific_cols, 1)
+    #     print(f"PCA SS3 explained variance ratio: {pca_ss3.explained_variance_ratio_}")
+    #     cluster_feat_df = pd.merge(cluster_feat_df, pca_ss_df3, on='node_id', how='left')
 
     # Normalization right before clustering
     print("Normalizing features before clustering...")
@@ -94,7 +110,7 @@ def load_data(FEAT_PATH, target):
     node_X_scaled = cluster_feat_df[feature_cols].values
     cluster_feat_df.to_csv(f'{target}_feat_for_cluster_df.csv', index=False)
 
-    return node_X_scaled, cluster_feat_df['node_id']
+    return node_X_scaled, cluster_feat_df
 
 def evaluate_hdbscan(eps, mcs, mss, csm, node_feat_scaled):
     clusterer = hdbscan.HDBSCAN(
@@ -169,29 +185,6 @@ def grid_search(node_feat_scaled, node_ids, target, eps_range, min_cluster_range
     print("Grid search completed. Top 3 candidates for clustering:")
     print(best_params)
 
-    for idx, row in best_params.iterrows():
-        eps = float(row['eps'])
-        mcs = int(row['min_cluster_size'])
-        mss = int(row['min_sample_size'])
-        csm = row['cluster_selection_method']
-        
-        clusterer = hdbscan.HDBSCAN(
-            cluster_selection_epsilon=eps,
-            min_cluster_size=mcs,
-            min_samples=mss,
-            cluster_selection_method=csm,
-            gen_min_span_tree=True
-        )
-        
-        labels = clusterer.fit_predict(node_feat_scaled)
-
-        pd.DataFrame({
-            'node_id': node_ids,
-            'cluster_label': labels
-        }).to_csv(f"{target}_cluster_labels_eps{eps}_mcs{mcs}_mss{mss}_{csm}.csv", index=False)
-        
-        print(f"Saved: {target}_cluster_labels_eps{eps}_mcs{mcs}_mss{mss}_{csm}.csv")
-
     return results_df
 
 def elbow_plot(df, eps_range, cluster_selection_methods, metric="DBCV", target="residue"):
@@ -237,7 +230,7 @@ if __name__ == "__main__":
     if not os.path.exists(args.feat_path):
         raise FileNotFoundError(f"Features not found at {args.feat_path}")
     else:
-        feat_scaled, node_ids = load_data(args.feat_path, args.target)
+        feat_scaled, proc_feat_df = load_data(args.feat_path, args.target)
 
     if not args.grid_sc:
         params_dict = {
@@ -278,10 +271,9 @@ if __name__ == "__main__":
         )
         labels = clusterer.fit_predict(feat_scaled)
         save_name = f"{args.target}_cluster_labels_eps{final_params['eps']}_mcs{final_params['min_cluster_size']}_mss{final_params['min_sample_size']}_{final_params['cluster_selection_method']}.csv"
-        pd.DataFrame({
-            'node_id': node_ids,
-            'cluster_label': labels
-        }).to_csv(save_name, index=False)
+        cluster_results = pd.DataFrame({'node_id': proc_feat_df['node_id'], 'cluster': labels})
+        cluster_results = pd.merge(cluster_results, proc_feat_df, on='node_id', how='left')
+        cluster_results.to_csv(save_name, index=False)
         print(f"Saved: {save_name}")
         print("Pipeline completed successfully.")
     else:
