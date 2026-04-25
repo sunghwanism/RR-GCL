@@ -1,5 +1,0 @@
-mode: component_aware
-same_cc_target_ratio: 0.7
-cross_cc_target_ratio: 0.3
-fallback: fill_from_other_pool
-strict: false
