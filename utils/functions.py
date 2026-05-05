@@ -55,7 +55,7 @@ def load_yaml(path: str) -> dict:
         config = yaml.safe_load(f)
     return argparse.Namespace(**config)
 
-def print_time(training_time):
+def formatTime(training_time):
     hours = int(training_time // 3600)
     minutes = int((training_time % 3600) // 60)
     seconds = int(training_time % 60)
