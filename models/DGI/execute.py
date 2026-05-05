@@ -13,8 +13,7 @@ from torch_geometric.loader import DataLoader
 
 from models.DGI.models.dgi import DGI
 from models.DGI.models.logreg import LogReg
-from utils.graph_utils import shuffle_node_features
-from utils.graph_utils import nx_to_pyg_data
+from models.DGI.dataset import shuffle_node_features
 
 from torch_geometric.data import Data
 import networkx as nx
@@ -89,7 +88,7 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
     lr = config.lr
     l2_coef = config.l2_coef
     hid_units = config.hidden_dims
-    nonlinearity = config.nonlinearity
+    nonlinearity = config.activation
     drop_prob = config.drop_prob
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -104,16 +103,20 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
     # Get feature size from first batch
     first_batch = next(iter(train_loader))
     num_ft_size = first_batch.x.size(1)
-    cat_ft_size = first_batch.x_cat.size(1)
+    cat_feat_num_dict = {}
+    for key in first_batch.keys():
+        if key not in ['x', 'edge_index', 'batch', 'y']:
+            cat_feat_num_dict[key] = first_batch[key].size(1)
 
-    # for key, values in first_batch.items():
-    #     print(key, ':', values.shape)
+    print("Input Feature Shape in DataLoader")
+    for key, values in first_batch.items():
+        print(key, ':', values.shape)
+    # print(f"Feature dimension: Numerical: {num_ft_size}")
+    # print(f"Categorical: {cat_feat_num_dict}")
     print("============================"*2)
-    print(f"Feature dimension: Numerical: {num_ft_size} + Categorical: {cat_ft_size}")
-    print(f"Hidden units: {hid_units}")
     
     # Initialize model
-    model = DGI(num_ft_size, config.uniprot_size, config.bin_size, config.emb_dim_uniprot, config.emb_dim_bin, hid_units, nonlinearity, drop_prob).to(device)
+    model = DGI(num_ft_size, cat_feat_num_dict, config.emb_dim, hid_units, nonlinearity, drop_prob).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_coef)
     criterion = nn.BCEWithLogitsLoss()
     
