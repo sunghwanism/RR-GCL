@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --account=ACCOUNT_NAME
+#SBATCH --account=$ACCOUNT_NAME
 #SBATCH --job-name=DGI_train_1_all
-#SBATCH --output=logs/DGI_train_1_all_j.txt
+#SBATCH --output=logs/DGI_train_1_all_%j.txt
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --cpus-per-task=4

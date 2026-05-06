@@ -155,7 +155,7 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
         lr_factor = getattr(config, 'lr_factor', 0.1)
         min_lr = getattr(config, 'min_lr', 1e-6)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=lr_factor, patience=lr_patience, min_lr=min_lr, verbose=True
+            optimizer, mode='min', factor=lr_factor, patience=lr_patience, min_lr=min_lr,
         )
     else:
         scheduler = None
