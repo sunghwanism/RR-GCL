@@ -21,6 +21,7 @@ def get_parser():
     parser.add_argument('--config', type=str, default='config/DGI.yaml', help='Path to config file')
     parser.add_argument('--SAVEPATH', type=str, default=None, help='Path to save results')
     parser.add_argument('--load_pretrained', action='store_true', help='Load pretrained model')
+    parser.add_argument('--node_att', type=str, nargs='+', default=None, help='List of node attributes to override config')
     
     # Training args overrides
     parser.add_argument('--batch_size', type=int, default=32)
@@ -32,6 +33,12 @@ def get_parser():
     # EarlyStopping args overrides
     parser.add_argument('--patience', type=int, default=30)
     parser.add_argument('--min_delta', type=float, default=None)
+    
+    # LR Scheduler args
+    parser.add_argument('--use_scheduler', action='store_true', help='Use ReduceLROnPlateau scheduler')
+    parser.add_argument('--lr_patience', type=int, default=10, help='Patience for LR scheduler')
+    parser.add_argument('--lr_factor', type=float, default=0.5, help='Factor to reduce LR')
+    parser.add_argument('--min_lr', type=float, default=1e-6, help='Minimum LR for scheduler')
 
     # graph augmentation args
     parser.add_argument('--aug_anchor_ratio', type=float, default=0.01, help='Ratio of anchor nodes to total nodes')
@@ -54,7 +61,10 @@ def main():
     config = load_yaml(args.config)
 
     # if var is overwritted, then update config (args is priority)
-    vars(config).update(vars(args))
+    for k, v in vars(args).items():
+        if v is not None:
+            setattr(config, k, v)
+            
     set_seed(config.seed)
     print(config)
 
@@ -75,41 +85,42 @@ def main():
     hop_ratios = getattr(config, 'hop_ratios', [0.9, 0.8, 0.5, 0.5, 0.5])
     aug_min_node = getattr(config, 'aug_min_node', 30)
 
-    # split cc_list into training and testing sets
+    # split cc_list into training, validation and testing sets
     rng = random.Random(config.seed)
-    train_idx = rng.sample(range(135), 124)
+    
+    num_total = len(cc_list)
+    train_val_idx = rng.sample(range(num_total), min(124, num_total))
     exclude_values = {45, 46}  # incldue cancer driver
-    train_idx = [i for i in train_idx if i not in exclude_values]
-    test_idx = [i for i in range(135) if i not in train_idx]
+    train_val_idx = [i for i in train_val_idx if i not in exclude_values]
+    test_idx = [i for i in range(num_total) if i not in train_val_idx]
+    
+    val_ratio = 0.15
+    num_val = int(len(train_val_idx) * val_ratio)
+    val_idx = rng.sample(train_val_idx, num_val)
+    train_idx = [i for i in train_val_idx if i not in val_idx]
+
     train_idx.sort()
+    val_idx.sort()
     test_idx.sort()
 
-    augmented_cc_list = augment_connected_components(cc_list, graph, aug_anchor_ratio, hop_ratios, min_aug_node=aug_min_node, idx_list=train_idx, seed=config.seed)
+    print(f"[Data Augmentation] Augmenting ONLY train graph components...")
+    train_data_list = augment_connected_components(cc_list, graph, aug_anchor_ratio, hop_ratios, min_aug_node=aug_min_node, idx_list=train_idx, seed=config.seed)
     
-    print(f"[Data Augmentation] Augmented graph has {len(augmented_cc_list)} connected components. Time: {formatTime(time.time() - start)}")
+    val_data_list = [cc_list[i] for i in val_idx]
+    test_data_list = [cc_list[i] for i in test_idx] 
+    
+    print(f"[Data Augmentation] Augmented train graph has {len(train_data_list)} connected components. Time: {formatTime(time.time() - start)}")
     
     # Create PyG DataLoaders
     print("================ [Generate Train/Val/Test DataLoader] ================")
-    start = time.time()
-    val_ratio = 0.15
-    num_val = int(len(augmented_cc_list)*val_ratio)
-
-    aug_val_idx = rng.sample(range(len(augmented_cc_list)), num_val)
-    aug_train_idx = [i for i in range(len(augmented_cc_list)) if i not in aug_val_idx]  
-    
-    aug_val_idx.sort()
-    aug_train_idx.sort()
-
-    train_data_list = [augmented_cc_list[i] for i in aug_train_idx]
-    val_data_list = [augmented_cc_list[i] for i in aug_val_idx]
-    test_data_list = [cc_list[i] for i in test_idx] 
+    start = time.time() 
     
     batch_size = getattr(config, 'batch_size', 32)
     
     train_loader = create_dgi_loaders(train_data_list, batch_size=batch_size, shuffle=True)
     val_loader = create_dgi_loaders(val_data_list, batch_size=batch_size, shuffle=False)
     test_loader = create_dgi_loaders(test_data_list, batch_size=batch_size, shuffle=False)
-    print(f"DataLoaders created. Train: {len(aug_train_idx)}, Val: {len(aug_val_idx)}, Test: {len(test_idx)}. Time: {formatTime(time.time() - start)}")
+    print(f"DataLoaders created. Train: {len(train_data_list)}, Val: {len(val_data_list)}, Test: {len(test_data_list)}. Time: {formatTime(time.time() - start)}")
     
     print("Starting DGI Training...")
     # Initialize wandb

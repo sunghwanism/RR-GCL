@@ -55,7 +55,10 @@ def train_dgi_epoch(model, loader, optimizer, criterion, device):
         optimizer.step()
         
         total_loss += loss.item()
-    
+        
+        # Free memory before next iteration
+        del batch, shuf_idx, shuf_fts, cat_feats, shuf_cat_feats, lbl_1, lbl_2, lbl, logits, loss
+        
     return total_loss / len(loader)
 
 
@@ -78,10 +81,13 @@ def extract_embeddings(model, loader, device):
             from torch_geometric.nn import global_mean_pool
             graph_embeds = global_mean_pool(embeds, batch.batch)
             
-            all_embeddings.append(graph_embeds)
+            all_embeddings.append(graph_embeds.cpu())
             if hasattr(batch, 'y'):
                 # Assuming y is graph-level label
-                all_labels.append(batch.y)
+                all_labels.append(batch.y.cpu() if isinstance(batch.y, torch.Tensor) else batch.y)
+            
+            # Free memory
+            del batch, cat_feats, embeds, graph_embeds
     
     embeddings = torch.cat(all_embeddings, dim=0)
     labels = torch.cat(all_labels, dim=0) if all_labels else None
@@ -126,15 +132,33 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
 
     print("Input Feature Shape in DataLoader")
     for key, values in first_batch.items():
-        print(key, ':', values.shape)
+        if hasattr(values, 'shape'):
+            print(key, ':', values.shape)
+        else:
+            print(key, ':', type(values), 'len:', len(values) if hasattr(values, '__len__') else 'N/A')
     # print(f"Feature dimension: Numerical: {num_ft_size}")
     # print(f"Categorical: {cat_feat_num_dict}")
     print("============================"*2)
     
+    # Free first_batch to save memory during training
+    del first_batch
+
     # Initialize model
     model = DGI(num_ft_size, cat_feat_num_dict, emb_dim, hid_units, nonlinearity, drop_prob).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_coef)
     criterion = nn.BCEWithLogitsLoss()
+    
+    # Initialize Scheduler if requested
+    use_scheduler = getattr(config, 'use_scheduler', False)
+    if use_scheduler:
+        lr_patience = getattr(config, 'lr_patience', 10)
+        lr_factor = getattr(config, 'lr_factor', 0.1)
+        min_lr = getattr(config, 'min_lr', 1e-6)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=lr_factor, patience=lr_patience, min_lr=min_lr,
+        )
+    else:
+        scheduler = None
     
     # Training loop
     print("============================"*2)
@@ -183,13 +207,22 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
                                batch.edge_index, batch.batch, None, None)
                 loss = criterion(logits, lbl)
                 val_loss += loss.item()
+                
+                # Free memory
+                del batch, shuf_idx, shuf_fts, cat_feats, shuf_cat_feats, lbl_1, lbl_2, lbl, logits, loss
         
         if len(val_loader) > 0:
             val_loss /= len(val_loader)
         
-        if epoch % 10 == 0:
-            print(f'Epoch {epoch:4d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}')
-            torch.save(model.state_dict(), os.path.join(BASESAVEPATH, f'checkpoint_{epoch}.pth'))
+        if scheduler is not None:
+            scheduler.step(val_loss)
+            current_lr = optimizer.param_groups[0]['lr']
+        else:
+            current_lr = optimizer.param_groups[0]['lr']
+        
+        if epoch % 50 == 0:
+            print(f'Epoch {epoch:4d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {current_lr:.6f}')
+            # torch.save(model.state_dict(), os.path.join(BASESAVEPATH, f'checkpoint_{epoch}.pth'))
         
         # Early stopping based on validation loss
         if val_loss < best_loss and epoch > 4:
@@ -208,78 +241,99 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
             run_wandb.log({
                 "epoch": epoch, 
                 "train_loss": train_loss,
-                "val_loss": val_loss
+                "val_loss": val_loss,
+                "lr": current_lr
             })
         
         if cnt_wait >= patience:
             print("=========="*10)
-            print(f'\nEarly stopping at epoch {epoch}')
+            print(f'Early stopping at epoch {epoch}')
             print("=========="*10)
             break
         
         
     print("##########"*10)
-    print(f'\nBest epoch: {best_epoch}, Best val loss: {best_loss:.4f}')
+    print(f'Best epoch: {best_epoch}, Best val loss: {best_loss:.4f}')
     print("##########"*10)
     
     # Load best model
-    # print("\n" + "="*60)
-    # print("EXTRACTING EMBEDDINGS")
-    # print("="*60)
-    
-    # if os.path.exists(save_path):
-    #     model.load_state_dict(torch.load(save_path))
-    # else:
-    #     print("Warning: Best model file not found, using current model state.")
-    
-    # # Extract embeddings for all sets
-    # train_embeds, train_labels = extract_embeddings(model, train_loader, device)
-    # val_embeds, val_labels = extract_embeddings(model, val_loader, device)
-    # test_embeds, test_labels = extract_embeddings(model, test_loader, device)
-    
-    # print(f"Train embeddings shape: {train_embeds.shape}")
-    # print(f"Val embeddings shape: {val_embeds.shape}")
-    # print(f"Test embeddings shape: {test_embeds.shape}")
-    
-    # # Evaluate with logistic regression (if labels available)
-    # if train_labels is not None and test_labels is not None:
-    #     print("\n" + "="*60)
-    #     print("DOWNSTREAM EVALUATION")
-    #     print("="*60)
-        
-    #     nb_classes = int(train_labels.max().item()) + 1
-    #     xent = nn.CrossEntropyLoss()
-        
-    #     accs = []
-    #     for run in range(10):
-    #         log = LogReg(hid_units, nb_classes).to(device)
-    #         opt = torch.optim.Adam(log.parameters(), lr=0.01, weight_decay=0.0)
-            
-    #         # Train
-    #         for _ in range(200):
-    #             log.train()
-    #             opt.zero_grad()
-    #             logits = log(train_embeds)
-    #             loss = xent(logits, train_labels)
-    #             loss.backward()
-    #             opt.step()
-            
-    #         # Test
-    #         log.eval()
-    #         with torch.no_grad():
-    #             logits = log(test_embeds)
-    #             preds = torch.argmax(logits, dim=1)
-    #             acc = (preds == test_labels).float().mean().item()
-    #             accs.append(acc * 100)
-        
-    #     accs = np.array(accs)
-    #     print(f"Test Accuracy: {accs.mean():.2f}% ± {accs.std():.2f}%")
-    
-    # print("\n" + "="*60)
-    # print("DONE!")
-    # print("="*60)
+    if os.path.exists(save_path):
+        print(f"Loading best model from {save_path} for testing...")
+        model.load_state_dict(torch.load(save_path, map_location=device))
+    else:
+        print("Warning: Best model file not found, using current model state.")
 
+    # Calculate Test Loss and save embeddings
+    print("="*60)
+    print("SAVING EMBEDDINGS FOR TRAIN, VAL, TEST")
+    print("="*60)
+    
+    model.eval()
+    test_loss = 0
+    
+    loaders_to_save = [('train', train_loader), ('val', val_loader), ('test', test_loader)]
 
-# if __name__ == '__main__':
-#     # run_training() needs arguments now, so direct execution without correct context is tough.
-#     pass
+    with torch.no_grad():
+        for split_name, loader in loaders_to_save:
+            print(f"Processing {split_name} split...")
+            split_dir = os.path.join(BASESAVEPATH, split_name)
+            os.makedirs(split_dir, exist_ok=True)
+            
+            split_loss = 0
+            for batch in loader:
+                batch = batch.to(device)
+
+                num_nodes = batch.x.size(0)
+                shuf_idx = torch.randperm(num_nodes)
+
+                # Shuffle features
+                shuf_fts = batch.x[shuf_idx]
+                cat_feats = {}
+                shuf_cat_feats = {}
+                for key in model.cat_feat_emb_dict.keys():
+                    if hasattr(batch, key):
+                        feat = getattr(batch, key)
+                        cat_feats[key] = feat
+                        shuf_cat_feats[key] = feat[shuf_idx]
+                lbl_1 = torch.ones(num_nodes, 1, device=device)
+                lbl_2 = torch.zeros(num_nodes, 1, device=device)
+                lbl = torch.cat((lbl_1, lbl_2), 0)
+                
+                logits = model(batch.x, cat_feats, shuf_fts, shuf_cat_feats, 
+                               batch.edge_index, batch.batch, None, None)
+                loss = criterion(logits, lbl)
+                split_loss += loss.item()
+
+                # Now extract and save embeddings
+                embeds, _ = model.embed(batch.x, cat_feats, batch.edge_index, batch.batch)
+                embeds_np = embeds.cpu().numpy()
+                
+                # Flatten node_names from batch
+                flat_node_ids = []
+                if hasattr(batch, 'node_names'):
+                    for names in batch.node_names:
+                        if isinstance(names, list):
+                            flat_node_ids.extend(names)
+                        else:
+                            flat_node_ids.append(names)
+                
+                # Save each node's embedding as a .npy file
+                for i, node_id in enumerate(flat_node_ids):
+                    np.save(os.path.join(split_dir, f"{node_id}.npy"), embeds_np[i])
+
+                # Free memory
+                del batch, shuf_idx, shuf_fts, cat_feats, shuf_cat_feats, lbl_1, lbl_2, lbl, logits, loss, embeds, embeds_np
+
+            if len(loader) > 0:
+                split_loss /= len(loader)
+            
+            if split_name == 'test':
+                test_loss = split_loss
+                print(f"Test Loss: {test_loss:.4f}")
+
+    if run_wandb:
+        run_wandb.summary["test_loss"] = test_loss
+    
+    print("="*60)
+    print("DONE!")
+    print("="*60)

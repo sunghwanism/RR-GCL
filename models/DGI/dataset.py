@@ -252,6 +252,7 @@ def nx_to_pyg_data(G):
     any categorical list features into torch.long tensors.
     """
     data = from_networkx(G)
+    data.node_names = list(G.nodes())
     
     if hasattr(data, 'x') and data.x is not None:
         if not isinstance(data.x, torch.Tensor):
@@ -261,15 +262,20 @@ def nx_to_pyg_data(G):
             data.x = data.x.float()
             
     # Find attributes other than the standard PyG keys (e.g., pssm, sequence_pattern) and convert them to LongTensor
-    standard_keys = {'x', 'y', 'edge_index', 'edge_weight', 'edge_attr', 'node_id', 'num_nodes', 'weight', 'cleaned_total_energy'}
+    standard_keys = {'x', 'y', 'edge_index', 'edge_weight', 'edge_attr', 'node_id', 'num_nodes', 'weight', 'cleaned_total_energy', 'node_names'}
     for key in data.keys():
         if key not in standard_keys:
             val = getattr(data, key)
             if val is not None:
+                if isinstance(val, list) and len(val) > 0 and isinstance(val[0], str):
+                    continue # Skip string lists
                 if not isinstance(val, torch.Tensor):
                     # Convert list data to tensor
                     val_list = val.tolist() if hasattr(val, 'tolist') else val
-                    setattr(data, key, torch.tensor(val_list, dtype=torch.long))
+                    try:
+                        setattr(data, key, torch.tensor(val_list, dtype=torch.long))
+                    except ValueError as e:
+                        raise ValueError(f"Failed to convert feature '{key}' to torch.long tensor. Error: {e}")
                 elif val.dtype != torch.long:
                     # If it is already a tensor but of a different type such as float, cast it to long (for use in Embedding layers)
                     setattr(data, key, val.long())

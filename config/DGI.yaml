@@ -35,7 +35,7 @@ graph_augmentation:
 # Model Setting
 # ====================
 model_param:
-  hidden_dims: [128, 256, 512]
+  hidden_dims: [64, 128, 256]
   drop_prob: 0.5
   activation: prelu # not implement yet
   edge_att: null # weight name (null or cleaned_total_energy)
