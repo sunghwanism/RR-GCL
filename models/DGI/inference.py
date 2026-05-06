@@ -23,6 +23,7 @@ def get_parser():
     parser.add_argument('--SAVEPATH', type=str, default=None, help='Path to save results')
     
     parser.add_argument('--model_path', type=str, default=None, help='Path to the trained model (BestPerformance.pth)')
+    parser.add_argument('--node_att', type=str, nargs='+', default=None, help='List of node attributes to override config')
     parser.add_argument('--output_path', type=str, default='node_embeddings.csv', help='Path to save the output node embeddings')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--seed', type=int, default=42, help='Seed for random number generator')
@@ -61,7 +62,10 @@ def main():
     config = load_yaml(args.config)
 
     # if var is overwritted, then update config (args is priority)
-    vars(config).update(vars(args))
+    for k, v in vars(args).items():
+        if v is not None:
+            setattr(config, k, v)
+            
     set_seed(config.seed)
     print(config)
 

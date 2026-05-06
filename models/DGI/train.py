@@ -21,6 +21,7 @@ def get_parser():
     parser.add_argument('--config', type=str, default='config/DGI.yaml', help='Path to config file')
     parser.add_argument('--SAVEPATH', type=str, default=None, help='Path to save results')
     parser.add_argument('--load_pretrained', action='store_true', help='Load pretrained model')
+    parser.add_argument('--node_att', type=str, nargs='+', default=None, help='List of node attributes to override config')
     
     # Training args overrides
     parser.add_argument('--batch_size', type=int, default=32)
@@ -54,7 +55,10 @@ def main():
     config = load_yaml(args.config)
 
     # if var is overwritted, then update config (args is priority)
-    vars(config).update(vars(args))
+    for k, v in vars(args).items():
+        if v is not None:
+            setattr(config, k, v)
+            
     set_seed(config.seed)
     print(config)
 
