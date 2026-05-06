@@ -55,7 +55,10 @@ def train_dgi_epoch(model, loader, optimizer, criterion, device):
         optimizer.step()
         
         total_loss += loss.item()
-    
+        
+        # Free memory before next iteration
+        del batch, shuf_idx, shuf_fts, cat_feats, shuf_cat_feats, lbl_1, lbl_2, lbl, logits, loss
+        
     return total_loss / len(loader)
 
 
@@ -78,10 +81,13 @@ def extract_embeddings(model, loader, device):
             from torch_geometric.nn import global_mean_pool
             graph_embeds = global_mean_pool(embeds, batch.batch)
             
-            all_embeddings.append(graph_embeds)
+            all_embeddings.append(graph_embeds.cpu())
             if hasattr(batch, 'y'):
                 # Assuming y is graph-level label
-                all_labels.append(batch.y)
+                all_labels.append(batch.y.cpu() if isinstance(batch.y, torch.Tensor) else batch.y)
+            
+            # Free memory
+            del batch, cat_feats, embeds, graph_embeds
     
     embeddings = torch.cat(all_embeddings, dim=0)
     labels = torch.cat(all_labels, dim=0) if all_labels else None
@@ -126,11 +132,17 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
 
     print("Input Feature Shape in DataLoader")
     for key, values in first_batch.items():
-        print(key, ':', values.shape)
+        if hasattr(values, 'shape'):
+            print(key, ':', values.shape)
+        else:
+            print(key, ':', type(values), 'len:', len(values) if hasattr(values, '__len__') else 'N/A')
     # print(f"Feature dimension: Numerical: {num_ft_size}")
     # print(f"Categorical: {cat_feat_num_dict}")
     print("============================"*2)
     
+    # Free first_batch to save memory during training
+    del first_batch
+
     # Initialize model
     model = DGI(num_ft_size, cat_feat_num_dict, emb_dim, hid_units, nonlinearity, drop_prob).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_coef)
@@ -183,6 +195,9 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
                                batch.edge_index, batch.batch, None, None)
                 loss = criterion(logits, lbl)
                 val_loss += loss.item()
+                
+                # Free memory
+                del batch, shuf_idx, shuf_fts, cat_feats, shuf_cat_feats, lbl_1, lbl_2, lbl, logits, loss
         
         if len(val_loader) > 0:
             val_loss /= len(val_loader)
