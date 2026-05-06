@@ -18,7 +18,10 @@ def min_max_scale(df, colname, min_val, max_val):
     return df
 
 def standard_scale(df, colname):
-    df[colname] = (df[colname] - df[colname].mean()) / df[colname].std()
+    std = df[colname].std()
+    if pd.isna(std) or std == 0:
+        std = 1.0
+    df[colname] = (df[colname] - df[colname].mean()) / std
     return df
 
 def all_standard_scale(df):
