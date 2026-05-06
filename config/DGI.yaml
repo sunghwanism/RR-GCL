@@ -1,0 +1,53 @@
+
+node_att: [
+    # ID and position features
+    'copy_idx', #'pos', 
+    # Structural-based features
+    'rel_sasa', 'ss_helix', 'ss_sheet', 'ss_loop', 'depth', 'hse_up', 'hse_down', 
+    # DSSP features (float)
+    'dssp_accessibility', 'dssp_TCO', 'dssp_kappa', 'dssp_alpha', 'dssp_phi', 'dssp_psi', 
+    # DSSP featuers (category)
+    'dssp_sec_struct', 'dssp_helix_3_10', 'dssp_helix_alpha', 'dssp_helix_pi', 'dssp_helix_pp', 
+    'dssp_bend', 'dssp_chirality', 'dssp_sheet', 'dssp_strand', # 'dssp_ladder_1', 'dssp_ladder_2', 
+    # AAindex1
+    'aa1_KYTJ820101', 'aa1_KLEP840101', 'aa1_BHAR880101', 
+    'aa1_JANJ780101', 'aa1_CHOP780201', 'aa1_GRAR740102', 'aa1_GRAR740103', 
+    # PSSM
+    'pssm_A', 'pssm_C', 'pssm_D', 'pssm_E', 'pssm_F', 'pssm_G', 'pssm_H', 
+    'pssm_I', 'pssm_K', 'pssm_L', 'pssm_M', 'pssm_N', 'pssm_P', 'pssm_Q', 
+    'pssm_R', 'pssm_S', 'pssm_T', 'pssm_V', 'pssm_W', 'pssm_Y', 'pssm_entropy', 
+    # HMM
+    'hmm_A', 'hmm_C', 'hmm_D', 'hmm_E', 'hmm_F', 'hmm_G', 'hmm_H', 'hmm_I', 
+    'hmm_K', 'hmm_L', 'hmm_M', 'hmm_N', 'hmm_P', 'hmm_Q', 'hmm_R', 'hmm_S', 
+    'hmm_T', 'hmm_V', 'hmm_W', 'hmm_Y', 'hmm_MM', 'hmm_MI', 'hmm_MD', 'hmm_IM', 
+    'hmm_II', 'hmm_DM', 'hmm_DD', 'hmm_neff'
+]
+
+# ====================
+# Augmentation Setting
+# ====================
+graph_augmentation:
+  aug_anchor_ratio: 0.10
+  hop_ratios: [0.9, 0.8, 0.5, 0.5, 0.5]
+  aug_min_node: 30
+
+# ====================
+# Model Setting
+# ====================
+model_param:
+  hidden_dims: [128, 256, 512]
+  drop_prob: 0.5
+  activation: prelu # not implement yet
+  edge_att: null # weight name (null or cleaned_total_energy)
+  emb_dim:
+    dssp_sec_struct: 16
+    dssp_helix_3_10: 4
+    dssp_helix_alpha: 4
+    dssp_helix_pi: 4
+    dssp_helix_pp: 8
+    dssp_bend: 4
+    dssp_chirality: 4
+    dssp_sheet: 32
+    dssp_strand: 32
+    # dssp_ladder_1: 128
+    # dssp_ladder_2: 128

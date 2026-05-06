@@ -1,33 +1,42 @@
 import torch
 import torch.nn as nn
-from ..layers import DenseGCN, AvgReadout, Discriminator
+from models.DGI.layers import DenseGCN, AvgReadout, Discriminator
 
 class DGI(nn.Module):
-    def __init__(self, n_in_numeric, n_uniprot, n_bin, emb_dim_uniprot, emb_dim_bin, out_dim_list, activation, drop_prob):
+    def __init__(self, n_in_numeric, cat_feat_num_dict, emb_dim, out_dim_list, activation, drop_prob):
         super(DGI, self).__init__()
         
-        self.uniprot_embedding = nn.Embedding(n_uniprot, emb_dim_uniprot)
-        self.bin_embedding = nn.Embedding(n_bin, emb_dim_bin)
+        self.cat_feat_emb_dict = nn.ModuleDict({
+            key: nn.Embedding(value, emb_dim[key], padding_idx=0) for key, value in cat_feat_num_dict.items()
+        })
 
-        total_in_channels = n_in_numeric + emb_dim_uniprot + emb_dim_bin
+        total_in_channels = n_in_numeric + sum(emb_dim[key] for key in cat_feat_num_dict.keys())
         
         self.gcn = DenseGCN(total_in_channels, out_dim_list, activation, drop_prob)
         self.read = AvgReadout()
         self.sigm = nn.Sigmoid()
         self.disc = Discriminator(out_dim_list[-1])
 
-    def _get_combined_feat(self, x_numeric, uniprot_idx, bin_idx):
-        u_emb = self.uniprot_embedding(uniprot_idx) # (N, emb_dim)
-        b_emb = self.bin_embedding(bin_idx)       # (N, emb_dim)
+    def _get_combined_feat(self, x_numeric, cat_feat_dict):
+        cat_feat_emb_list = []
+        for key in sorted(self.cat_feat_emb_dict.keys()):
+            if key in cat_feat_dict:
+                feat = cat_feat_dict[key]
+                emb = self.cat_feat_emb_dict[key](feat)
+                if emb.dim() == 3:
+                    emb = emb.sum(dim=1)
+                cat_feat_emb_list.append(emb)
         
-        return torch.cat([x_numeric, u_emb, b_emb], dim=1)
+        if cat_feat_emb_list:
+            return torch.cat([x_numeric] + cat_feat_emb_list, dim=1)
+        return x_numeric
 
-    def forward(self, x_num, uniprot_idx, bin_idx, 
-                shuf_num, shuf_uniprot, shuf_bin, 
+    def forward(self, x_num, cat_feats, 
+                shuf_num, shuf_cat_feats, 
                 edge_index, batch=None, samp_bias1=None, samp_bias2=None):
         
-        x = self._get_combined_feat(x_num, uniprot_idx, bin_idx)
-        shuf_x = self._get_combined_feat(shuf_num, shuf_uniprot, shuf_bin)
+        x = self._get_combined_feat(x_num, cat_feats)
+        shuf_x = self._get_combined_feat(shuf_num, shuf_cat_feats)
 
         h_1 = self.gcn(x, edge_index)
         c = self.read(h_1, batch)
@@ -43,9 +52,9 @@ class DGI(nn.Module):
         ret = self.disc(c_expanded, h_1, h_2, samp_bias1, samp_bias2)
         return ret
 
-    def embed(self, x_num, uniprot_idx, bin_idx, edge_index, batch=None):
+    def embed(self, x_num, cat_feats, edge_index, batch=None):
         
-        x = self._get_combined_feat(x_num, uniprot_idx, bin_idx)
+        x = self._get_combined_feat(x_num, cat_feats)
         h_1 = self.gcn(x, edge_index)
         c = self.read(h_1, batch)
         return h_1.detach(), c.detach()
