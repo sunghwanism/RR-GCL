@@ -6,7 +6,7 @@ import random
 import pickle
 import networkx as nx
 
-from utils.functions import load_yaml, set_seed, formatTime
+from utils.functions import load_yaml, set_seed, formatTime, init_wandb
 from utils.graphfunction import load_graph
 from models.DGI.dataset import create_dgi_loaders, cc_splitor, load_data, augment_connected_components
 from models.DGI.execute import run_training
@@ -19,22 +19,33 @@ def get_parser():
     parser.add_argument('--FeatFile', type=str, default='merged_feature_data_v041226.csv', help='Path to features file')
     parser.add_argument('--GraphFile', type=str, default='cleaned_weighted_graph_041226.pkl', help='Path to graph file')
     parser.add_argument('--config', type=str, default='config/DGI.yaml', help='Path to config file')
+    parser.add_argument('--SAVEPATH', type=str, default=None, help='Path to save results')
+    parser.add_argument('--load_pretrained', action='store_true', help='Load pretrained model')
     
     # Training args overrides
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--epoch', type=int, default=500)
     parser.add_argument('--num_workers', type=int, default=8)
     parser.add_argument('--lr', type=float, default=0.0001)
-
+    parser.add_argument('--l2_coef', type=float, default=0.00001)
+    
     # EarlyStopping args overrides
     parser.add_argument('--patience', type=int, default=30)
     parser.add_argument('--min_delta', type=float, default=None)
 
     # graph augmentation args
     parser.add_argument('--aug_anchor_ratio', type=float, default=0.01, help='Ratio of anchor nodes to total nodes')
-    parser.add_argument('--aug_hop_ratios', type=list, default=[0.8, 0.4, 0.2], help='Ratios of neighbors to select at each hop')
+    parser.add_argument('--aug_hop_ratios', type=list, default=[0.9, 0.8, 0.5, 0.5, 0.5], help='Ratios of neighbors to select at each hop')
     
     parser.add_argument('--seed', type=int, default=42, help='Seed for random number generator')
+    
+    # wandb args
+    parser.add_argument('--nowandb', action='store_true', help='Do not use wandb')
+    parser.add_argument('--wandb_key', type=str, default=None, help='wandb API key')
+    parser.add_argument('--project_name', type=str, default='RR-GCL', help='wandb project name')
+    parser.add_argument('--entity_name', type=str, default=None, help='wandb entity name')
+    parser.add_argument('--wandb_run_name', type=str, default=None, help='wandb run name')
+    
     return parser
 
 def main():
@@ -100,9 +111,15 @@ def main():
     test_loader = create_dgi_loaders(test_data_list, batch_size=batch_size, shuffle=False)
     print(f"DataLoaders created. Train: {len(aug_train_idx)}, Val: {len(aug_val_idx)}, Test: {len(test_idx)}. Time: {formatTime(time.time() - start)}")
     
-    # print("Starting DGI Training...")
-    # # Run DGI training function
-    # run_training(config, train_loader, val_loader, test_loader)
+    print("Starting DGI Training...")
+    # Initialize wandb
+    use_wandb = getattr(config, 'nowandb', False)
+    run_wandb = None
+    if not use_wandb:
+        run_wandb = init_wandb(config)
+    
+    # Run DGI training function
+    run_training(config, train_loader, val_loader, test_loader, run_wandb=run_wandb)
 
 if __name__ == '__main__':
     main()

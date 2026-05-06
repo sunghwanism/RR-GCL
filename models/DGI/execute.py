@@ -28,19 +28,26 @@ def train_dgi_epoch(model, loader, optimizer, criterion, device):
         batch = batch.to(device)
         optimizer.zero_grad()
         
-        # Shuffle features for negative sampling
-        shuf_fts = shuffle_node_features(batch.x)
-        shuf_uniprot = shuffle_node_features(batch.x_cat[:, 0])
-        shuf_bin = shuffle_node_features(batch.x_cat[:, 1])
-        
-        # Create labels: 1 for real, 0 for fake
         num_nodes = batch.x.size(0)
+        shuf_idx = torch.randperm(num_nodes)
+        
+        # Shuffle features for negative sampling
+        shuf_fts = batch.x[shuf_idx]
+        
+        cat_feats = {}
+        shuf_cat_feats = {}
+        for key in model.cat_feat_emb_dict.keys():
+            if hasattr(batch, key):
+                feat = getattr(batch, key)
+                cat_feats[key] = feat
+                shuf_cat_feats[key] = feat[shuf_idx]
+                
+        # Create labels: 1 for real, 0 for fake
         lbl_1 = torch.ones(num_nodes, 1, device=device)
         lbl_2 = torch.zeros(num_nodes, 1, device=device)
         lbl = torch.cat((lbl_1, lbl_2), 0)
         
-        logits = model(batch.x, batch.x_cat[:, 0], batch.x_cat[:, 1], 
-                       shuf_fts, shuf_uniprot, shuf_bin, 
+        logits = model(batch.x, cat_feats, shuf_fts, shuf_cat_feats, 
                        batch.edge_index, batch.batch, None, None)
         
         loss = criterion(logits, lbl)
@@ -61,7 +68,11 @@ def extract_embeddings(model, loader, device):
     with torch.no_grad():
         for batch in loader:
             batch = batch.to(device)
-            embeds, _ = model.embed(batch.x, batch.edge_index, batch.batch)
+            cat_feats = {}
+            for key in model.cat_feat_emb_dict.keys():
+                if hasattr(batch, key):
+                    cat_feats[key] = getattr(batch, key)
+            embeds, _ = model.embed(batch.x, cat_feats, batch.edge_index, batch.batch)
             
             # Get graph-level embeddings (mean pooling per graph)
             from torch_geometric.nn import global_mean_pool
@@ -79,17 +90,18 @@ def extract_embeddings(model, loader, device):
 
 
 def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
-    # Use config object (Namespace)
-    # config is already a Namespace-like object (argparse.Namespace)
     
     batch_size = config.batch_size
     nb_epochs = config.epoch
     patience = config.patience
     lr = config.lr
     l2_coef = config.l2_coef
-    hid_units = config.hidden_dims
-    nonlinearity = config.activation
-    drop_prob = config.drop_prob
+
+    # Model Arguments
+    hid_units = config.model_param['hidden_dims']
+    nonlinearity = config.model_param['activation']
+    drop_prob = config.model_param['drop_prob']
+    emb_dim = config.model_param['emb_dim']
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("============================"*2)
@@ -100,13 +112,17 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
     if not train_loader:
         raise ValueError("train_loader is None")
 
+    from data.vocab import attr_mappings
     # Get feature size from first batch
     first_batch = next(iter(train_loader))
     num_ft_size = first_batch.x.size(1)
     cat_feat_num_dict = {}
     for key in first_batch.keys():
-        if key not in ['x', 'edge_index', 'batch', 'y']:
-            cat_feat_num_dict[key] = first_batch[key].size(1)
+        if key != 'x' and key in config.node_att:
+            if hasattr(first_batch, key):
+                print(f"Feature: {key}, Shape: {getattr(first_batch, key).shape}")
+                if key in attr_mappings:
+                    cat_feat_num_dict[key] = max(attr_mappings[key].values()) + 1
 
     print("Input Feature Shape in DataLoader")
     for key, values in first_batch.items():
@@ -116,7 +132,7 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
     print("============================"*2)
     
     # Initialize model
-    model = DGI(num_ft_size, cat_feat_num_dict, config.emb_dim, hid_units, nonlinearity, drop_prob).to(device)
+    model = DGI(num_ft_size, cat_feat_num_dict, emb_dim, hid_units, nonlinearity, drop_prob).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_coef)
     criterion = nn.BCEWithLogitsLoss()
     
@@ -130,9 +146,9 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
     cnt_wait = 0
     
     if run_wandb:
-        BASESAVEPATH = os.path.join(config.SAVEPATH, config.model, run_wandb.id) # train-`1`
+        BASESAVEPATH = os.path.join(config.SAVEPATH, 'DGI', run_wandb.id) # train-`1`
     else:
-        BASESAVEPATH = os.path.join(config.SAVEPATH, config.model)
+        BASESAVEPATH = os.path.join(config.SAVEPATH, 'DGI')
     
     os.makedirs(BASESAVEPATH, exist_ok=True)
     save_path = os.path.join(BASESAVEPATH, 'BestPerformance.pth')
@@ -146,17 +162,24 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
         with torch.no_grad():
             for batch in val_loader:
                 batch = batch.to(device)
-                shuf_fts = shuffle_node_features(batch.x)
-                shuf_uniprot = shuffle_node_features(batch.x_cat[:, 0])
-                shuf_bin = shuffle_node_features(batch.x_cat[:, 1])
-                
+
                 num_nodes = batch.x.size(0)
+                shuf_idx = torch.randperm(num_nodes)
+
+                # Shuffle features
+                shuf_fts = batch.x[shuf_idx]
+                cat_feats = {}
+                shuf_cat_feats = {}
+                for key in model.cat_feat_emb_dict.keys():
+                    if hasattr(batch, key):
+                        feat = getattr(batch, key)
+                        cat_feats[key] = feat
+                        shuf_cat_feats[key] = feat[shuf_idx]
                 lbl_1 = torch.ones(num_nodes, 1, device=device)
                 lbl_2 = torch.zeros(num_nodes, 1, device=device)
                 lbl = torch.cat((lbl_1, lbl_2), 0)
                 
-                logits = model(batch.x, batch.x_cat[:, 0], batch.x_cat[:, 1], 
-                               shuf_fts, shuf_uniprot, shuf_bin, 
+                logits = model(batch.x, cat_feats, shuf_fts, shuf_cat_feats, 
                                batch.edge_index, batch.batch, None, None)
                 loss = criterion(logits, lbl)
                 val_loss += loss.item()

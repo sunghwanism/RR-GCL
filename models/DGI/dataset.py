@@ -2,6 +2,7 @@
 import os
 import random
 
+import gc
 import ast
 import pandas as pd
 import networkx as nx
@@ -138,13 +139,17 @@ def load_data(config):
     graph_path = os.path.join(config.DATABASE, config.GraphFile)
     graph = load_graph(graph_path)
     
-    # Using generator expression inside list for slightly better memory efficiency
-    cc_list = [graph.subgraph(c).copy() for c in nx.connected_components(graph)]
-    print(f"Graph loaded: {len(graph.nodes)} nodes, {len(graph.edges)} edges with {len(cc_list)} connected components.")
+    print(f"Graph loaded: {len(graph.nodes)} nodes, {len(graph.edges)} edges.")
 
     print(f"[Load Dataset] Load Node Features.")
     feat_path = os.path.join(config.DATABASE, config.FeatFile)
-    feat_df = pd.read_csv(feat_path)
+    
+    required_cols = set(['node_id', 'copy_idx', 'pos'] + config.node_att)
+    
+    feat_df = pd.read_csv(feat_path, usecols=lambda c: c in required_cols)
+    
+    valid_nodes = set(graph.nodes())
+    feat_df = feat_df[feat_df['node_id'].isin(valid_nodes)].reset_index(drop=True)
 
     print("[Load Dataset] Preprocessing Node Features...")
     print("1. Applying sin cos transform to dssp_phi, dssp_psi, dssp_alpha")
@@ -180,10 +185,12 @@ def load_data(config):
     # ---------------------------------------------------------
     # Continuous Column Identification
     cont_cols = [c for c in config.node_att if c not in obj_cols]
-    cont_cols.remove('copy_idx')
-    cont_cols.remove('pos')
+    if 'copy_idx' in cont_cols: cont_cols.remove('copy_idx')
+    if 'pos' in cont_cols: cont_cols.remove('pos')
 
-    # 3. Normalize Continuous Features BEFORE injecting them into the graph
+    feat_df[cont_cols] = feat_df[cont_cols].fillna(0.0)
+
+    # 3. Normalize Continuous Features
     print("[Load Dataset] Normalize Continuous Features")
     norm_cols = []
     for col in cont_cols:
@@ -196,34 +203,34 @@ def load_data(config):
     # ---------------------------------------------------------
     print("3. Organizing features for separate Embedding Layers")
     
-    # Filter only valid nodes present in the graph
-    valid_nodes = set(graph.nodes())
-    subset_df = feat_df[feat_df['node_id'].isin(valid_nodes)].set_index('node_id')
+    # We already filtered valid nodes, so we just set the index
+    feat_df.set_index('node_id', inplace=True)
 
-    # 4. Highly optimized assignment (Replaces slow iterrows)
-    # Convert all continuous columns to a single 'x' column containing lists of floats
-    subset_df['x'] = subset_df[cont_cols].astype(float).values.tolist()
+    # 4. Highly optimized assignment
+    # Convert all continuous columns + copy_idx to a single 'x' column
+    feat_df['x'] = feat_df[cont_cols + ['copy_idx']].astype(float).values.tolist()
 
     # Keep only the newly created 'x' column and the categorical columns
     cols_to_keep = ['x'] + cat_cols
-    subset_df = subset_df[cols_to_keep]
+    feat_df = feat_df[cols_to_keep]
 
     # Convert DataFrame to dictionary {node_id: {'x': [...], 'cat_col1': [...], ...}}
-    node_attr_dict = subset_df.to_dict(orient='index')
+    node_attr_dict = feat_df.to_dict(orient='index')
     
     # Apply attributes to graph
     nx.set_node_attributes(graph, node_attr_dict)
 
-    # Clear memory of large temporary variables
-    del subset_df, node_attr_dict
+    del feat_df, node_attr_dict
+    gc.collect()
     # ---------------------------------------------------------
 
     # 5. Set edge attributes
-    if config.model_param['edge_att'] is None:
+    edge_att_val = config.model_param.get('edge_att')
+    if edge_att_val is None or str(edge_att_val).lower() == 'none':
         for u, v, d in graph.edges(data=True):
             d.clear()
 
-    print(f"[Load Dataset] Final Node Attributes || Use Edge Weight {config.model_param['edge_att']}")
+    print(f"[Load Dataset] Final Node Attributes || Use Edge Weight {edge_att_val}")
     print(f"Continuous features (x): {cont_cols}")
     print(f"Categorical features (x_cat): {cat_cols}")
 
