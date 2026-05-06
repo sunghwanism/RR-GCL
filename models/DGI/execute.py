@@ -223,63 +223,71 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
     print("##########"*10)
     
     # Load best model
-    # print("\n" + "="*60)
-    # print("EXTRACTING EMBEDDINGS")
-    # print("="*60)
-    
-    # if os.path.exists(save_path):
-    #     model.load_state_dict(torch.load(save_path))
-    # else:
-    #     print("Warning: Best model file not found, using current model state.")
-    
-    # # Extract embeddings for all sets
-    # train_embeds, train_labels = extract_embeddings(model, train_loader, device)
-    # val_embeds, val_labels = extract_embeddings(model, val_loader, device)
-    # test_embeds, test_labels = extract_embeddings(model, test_loader, device)
-    
-    # print(f"Train embeddings shape: {train_embeds.shape}")
-    # print(f"Val embeddings shape: {val_embeds.shape}")
-    # print(f"Test embeddings shape: {test_embeds.shape}")
-    
-    # # Evaluate with logistic regression (if labels available)
-    # if train_labels is not None and test_labels is not None:
-    #     print("\n" + "="*60)
-    #     print("DOWNSTREAM EVALUATION")
-    #     print("="*60)
-        
-    #     nb_classes = int(train_labels.max().item()) + 1
-    #     xent = nn.CrossEntropyLoss()
-        
-    #     accs = []
-    #     for run in range(10):
-    #         log = LogReg(hid_units, nb_classes).to(device)
-    #         opt = torch.optim.Adam(log.parameters(), lr=0.01, weight_decay=0.0)
-            
-    #         # Train
-    #         for _ in range(200):
-    #             log.train()
-    #             opt.zero_grad()
-    #             logits = log(train_embeds)
-    #             loss = xent(logits, train_labels)
-    #             loss.backward()
-    #             opt.step()
-            
-    #         # Test
-    #         log.eval()
-    #         with torch.no_grad():
-    #             logits = log(test_embeds)
-    #             preds = torch.argmax(logits, dim=1)
-    #             acc = (preds == test_labels).float().mean().item()
-    #             accs.append(acc * 100)
-        
-    #     accs = np.array(accs)
-    #     print(f"Test Accuracy: {accs.mean():.2f}% ± {accs.std():.2f}%")
-    
-    # print("\n" + "="*60)
-    # print("DONE!")
-    # print("="*60)
+    if os.path.exists(save_path):
+        print(f"\nLoading best model from {save_path} for testing...")
+        model.load_state_dict(torch.load(save_path, map_location=device))
+    else:
+        print("\nWarning: Best model file not found, using current model state.")
 
+    # Calculate Test Loss and save embeddings
+    print("\n" + "="*60)
+    print("TESTING AND SAVING EMBEDDINGS")
+    print("="*60)
+    
+    model.eval()
+    test_loss = 0
+    test_dir = os.path.join(BASESAVEPATH, 'test')
+    os.makedirs(test_dir, exist_ok=True)
 
-# if __name__ == '__main__':
-#     # run_training() needs arguments now, so direct execution without correct context is tough.
-#     pass
+    with torch.no_grad():
+        for batch in test_loader:
+            batch = batch.to(device)
+
+            num_nodes = batch.x.size(0)
+            shuf_idx = torch.randperm(num_nodes)
+
+            # Shuffle features
+            shuf_fts = batch.x[shuf_idx]
+            cat_feats = {}
+            shuf_cat_feats = {}
+            for key in model.cat_feat_emb_dict.keys():
+                if hasattr(batch, key):
+                    feat = getattr(batch, key)
+                    cat_feats[key] = feat
+                    shuf_cat_feats[key] = feat[shuf_idx]
+            lbl_1 = torch.ones(num_nodes, 1, device=device)
+            lbl_2 = torch.zeros(num_nodes, 1, device=device)
+            lbl = torch.cat((lbl_1, lbl_2), 0)
+            
+            logits = model(batch.x, cat_feats, shuf_fts, shuf_cat_feats, 
+                           batch.edge_index, batch.batch, None, None)
+            loss = criterion(logits, lbl)
+            test_loss += loss.item()
+
+            # Now extract and save embeddings
+            embeds, _ = model.embed(batch.x, cat_feats, batch.edge_index, batch.batch)
+            embeds_np = embeds.cpu().numpy()
+            
+            # Flatten node_names from batch
+            flat_node_ids = []
+            if hasattr(batch, 'node_names'):
+                for names in batch.node_names:
+                    if isinstance(names, list):
+                        flat_node_ids.extend(names)
+                    else:
+                        flat_node_ids.append(names)
+            
+            # Save each node's embedding as a .npy file
+            for i, node_id in enumerate(flat_node_ids):
+                np.save(os.path.join(test_dir, f"{node_id}.npy"), embeds_np[i])
+
+    if len(test_loader) > 0:
+        test_loss /= len(test_loader)
+        
+    print(f"Test Loss: {test_loss:.4f}")
+    if run_wandb:
+        run_wandb.summary["test_loss"] = test_loss
+    
+    print("\n" + "="*60)
+    print("DONE!")
+    print("="*60)

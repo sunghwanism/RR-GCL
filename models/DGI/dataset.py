@@ -252,6 +252,7 @@ def nx_to_pyg_data(G):
     any categorical list features into torch.long tensors.
     """
     data = from_networkx(G)
+    data.node_names = list(G.nodes())
     
     if hasattr(data, 'x') and data.x is not None:
         if not isinstance(data.x, torch.Tensor):
