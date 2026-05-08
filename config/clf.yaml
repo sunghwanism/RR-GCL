@@ -1,0 +1,6 @@
+# Classifier Configuration
+in_ft_ffn: 512
+out_ft_list: [128, 64, 32, 16]
+n_cls: 2
+activation: 'relu'
+drop_prob: 0.5

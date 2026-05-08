@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from utils.activation import getActivation
+from models.Classifier.activation import getActivation
 
 
 class FFNClassifier(nn.Module):
@@ -8,9 +8,7 @@ class FFNClassifier(nn.Module):
         super(FFNClassifier, self).__init__()
 
         self.proj = nn.Linear(in_ft, out_ft_list[0])
-
         self.linear1 = nn.Linear(out_ft_list[0], out_ft_list[1])
-
         self.classifier = nn.Linear(out_ft_list[1], n_cls)
 
         self.act = getActivation(activation)
@@ -33,12 +31,15 @@ def TrainFFN(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
     
-    for batch in loader:
-        batch = batch.to(device)
+    if len(loader) == 0:
+        return 0
+
+    for x, y, _ in loader:
+        x, y = x.to(device), y.to(device)
         optimizer.zero_grad()
         
-        logits = model(batch.x)
-        loss = criterion(logits, batch.y)
+        logits = model(x)
+        loss = criterion(logits, y)
         loss.backward()
         optimizer.step()
         
@@ -51,11 +52,14 @@ def EvaluateFFN(model, loader, criterion, device):
     model.eval()
     total_loss = 0
     
+    if len(loader) == 0:
+        return 0
+
     with torch.no_grad():
-        for batch in loader:
-            batch = batch.to(device)
-            logits = model(batch.x)
-            loss = criterion(logits, batch.y)
+        for x, y, _ in loader:
+            x, y = x.to(device), y.to(device)
+            logits = model(x)
+            loss = criterion(logits, y)
             total_loss += loss.item()
     
     return total_loss / len(loader)
