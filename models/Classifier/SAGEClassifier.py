@@ -3,6 +3,8 @@ import torch.nn as nn
 from torch_geometric.nn import SAGEConv
 
 
+from models.Classifier.activation import getActivation
+
 class GNNClassifier(torch.nn.Module):
     def __init__(self, in_ft, out_ft_list, activation, drop_prob, n_cls):
         super(GNNClassifier, self).__init__()
@@ -15,7 +17,7 @@ class GNNClassifier(torch.nn.Module):
 
         self.classifier = nn.Linear(out_ft_list[3], n_cls)
 
-        self.act = nn.ReLU()
+        self.act = getActivation(activation)
         self.drop = nn.Dropout(drop_prob)
 
     def forward(self, x, edge_index):

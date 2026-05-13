@@ -229,6 +229,10 @@ def load_data(config):
     if edge_att_val is None or str(edge_att_val).lower() == 'none':
         for u, v, d in graph.edges(data=True):
             d.clear()
+    else:
+        for u, v, d in graph.edges(data=True):
+            if edge_att_val in d:
+                d[edge_att_val] = -d[edge_att_val]
 
     print(f"[Load Dataset] Final Node Attributes || Use Edge Weight {edge_att_val}")
     print(f"Continuous features (x): {cont_cols}")

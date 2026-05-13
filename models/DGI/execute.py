@@ -222,7 +222,6 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
         
         if epoch % 50 == 0:
             print(f'Epoch {epoch:4d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {current_lr:.6f}')
-            # torch.save(model.state_dict(), os.path.join(BASESAVEPATH, f'checkpoint_{epoch}.pth'))
         
         # Early stopping based on validation loss
         if val_loss < best_loss and epoch > 4:
@@ -280,6 +279,10 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
             os.makedirs(split_dir, exist_ok=True)
             
             split_loss = 0
+            
+            all_node_ids = []
+            all_embeddings = []
+            
             for batch in loader:
                 batch = batch.to(device)
 
@@ -317,12 +320,19 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
                         else:
                             flat_node_ids.append(names)
                 
-                # Save each node's embedding as a .npy file
-                for i, node_id in enumerate(flat_node_ids):
-                    np.save(os.path.join(split_dir, f"{node_id}.npy"), embeds_np[i])
+                # Append to lists
+                all_node_ids.extend(flat_node_ids)
+                all_embeddings.append(embeds_np)
 
                 # Free memory
                 del batch, shuf_idx, shuf_fts, cat_feats, shuf_cat_feats, lbl_1, lbl_2, lbl, logits, loss, embeds, embeds_np
+
+            # Save concatenated embeddings
+            if len(all_embeddings) > 0:
+                all_embeddings = np.concatenate(all_embeddings, axis=0)
+                save_file_path = os.path.join(split_dir, f"{split_name}_embeddings.npz")
+                np.savez(save_file_path, node_ids=all_node_ids, embeddings=all_embeddings)
+                print(f"Saved {len(all_node_ids)} embeddings to {save_file_path}")
 
             if len(loader) > 0:
                 split_loss /= len(loader)

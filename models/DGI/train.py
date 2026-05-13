@@ -22,6 +22,7 @@ def get_parser():
     parser.add_argument('--SAVEPATH', type=str, default=None, help='Path to save results')
     parser.add_argument('--load_pretrained', action='store_true', help='Load pretrained model')
     parser.add_argument('--node_att', type=str, nargs='+', default=None, help='List of node attributes to override config')
+    parser.add_argument('--edge_att', type=str, default=None, help='Edge attribute name to use (e.g., cleaned_total_energy)')
     
     # Training args overrides
     parser.add_argument('--batch_size', type=int, default=32)
@@ -65,6 +66,11 @@ def main():
         if v is not None:
             setattr(config, k, v)
             
+    if args.edge_att is not None:
+        if not hasattr(config, 'model_param'):
+            config.model_param = {}
+        config.model_param['edge_att'] = args.edge_att
+            
     set_seed(config.seed)
     print(config)
 
@@ -86,7 +92,7 @@ def main():
     aug_min_node = getattr(config, 'aug_min_node', 30)
 
     # split cc_list into training, validation and testing sets
-    rng = random.Random(config.seed)
+    rng = random.Random(777)
     
     num_total = len(cc_list)
     train_val_idx = rng.sample(range(num_total), min(124, num_total))
@@ -94,7 +100,7 @@ def main():
     train_val_idx = [i for i in train_val_idx if i not in exclude_values]
     test_idx = [i for i in range(num_total) if i not in train_val_idx]
     
-    val_ratio = 0.15
+    val_ratio = 0.20
     num_val = int(len(train_val_idx) * val_ratio)
     val_idx = rng.sample(train_val_idx, num_val)
     train_idx = [i for i in train_val_idx if i not in val_idx]
@@ -102,6 +108,15 @@ def main():
     train_idx.sort()
     val_idx.sort()
     test_idx.sort()
+
+    train_nodes = [node for idx in train_idx for node in list(cc_list[idx].nodes())]
+    val_nodes = [node for idx in val_idx for node in list(cc_list[idx].nodes())]
+    test_nodes = [node for idx in test_idx for node in list(cc_list[idx].nodes())]
+
+    print("Train Nodes", len(train_nodes), "Train cc", len(train_idx))
+    print("Val Nodes", len(val_nodes), "Val cc", len(val_idx))
+    print("Test Nodes", len(test_nodes), "Test cc", len(test_idx))
+
 
     print(f"[Data Augmentation] Augmenting ONLY train graph components...")
     train_data_list = augment_connected_components(cc_list, graph, aug_anchor_ratio, hop_ratios, min_aug_node=aug_min_node, idx_list=train_idx, seed=config.seed)

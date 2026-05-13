@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import GATConv
 
-from utils.activation import getActivation
+from models.Classifier.activation import getActivation
 
 class GATClassifier(torch.nn.Module):
     def __init__(self, in_ft, out_ft_list, activation, drop_prob, n_cls, heads=4):

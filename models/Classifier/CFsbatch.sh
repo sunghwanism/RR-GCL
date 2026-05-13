@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --account=
-#SBATCH --job-name=DGI_train_wE
-#SBATCH --output=logs/DGI_train_wE_%j.txt
+#SBATCH --job-name=DS_FFN_DGI
+#SBATCH --output=logs/DS_FFN_DGI_%j.txt
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_3g.40gb:1
+#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_1g.10gb:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=5G
-#SBATCH --time=03:00:00
+#SBATCH --time=00:15:00
 
 
 #############################
@@ -68,23 +68,22 @@ FEATURES=(
     dssp_bend dssp_chirality dssp_sheet dssp_strand
 )
 
-srun python models/DGI/train.py \
+srun python models/Classifier/train.py \
      --DATABASE $RRGCL_DATA \
      --config config/DGI.yaml \
      --batch_size 64 \
      --epoch 500 \
-     --num_workers 4 \
-     --lr 0.0005 \
-     --patience 100 \
-     --min_delta 0.001 \
-     --use_scheduler \
-     --lr_patience 50 \
-     --lr_factor 0.85 \
-     --min_lr 1e-6 \
+     --lr 0.0001 \
+     --clf_model FFN \
+     --load_model DGI \
+     --load_wandb_id "9oxu0esk" \
      --wandb_key $WANDB_API_KEY \
      --entity_name $ENTITY_NAME \
-     --project_name DGI \
-     --wandb_run_name 'Train-all_wEnergy' \
-     --SAVEPATH $RRGCL_DATA \
+     --project_name RR-GCL-Classifier \
+     --wandb_run_name "Eval_FFN_DGI" \
+     --SAVEPATH $RRGCL_SAVE \
      --node_att "${FEATURES[@]}" \
-     --edge_att "cleaned_total_energy"
+     --use_scheduler \
+     --lr_patience 30 \
+     --lr_factor 0.1 \
+     --min_lr 1e-6
