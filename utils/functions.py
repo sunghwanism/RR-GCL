@@ -31,7 +31,7 @@ def init_wandb(config):
         "name": config.wandb_run_name,
     }
 
-    if config.load_pretrained:
+    if getattr(config, 'load_pretrained', False):
         assert config.wandb_run_id is not None, "wandb_run_id is not provided"
         run = wandb.init(
             **init_args,
