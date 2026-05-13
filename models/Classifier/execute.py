@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import pandas as pd
 import numpy as np
+from sklearn.metrics import f1_score
 from torch.utils.data import Dataset, DataLoader
 
 from models.DGI.models.dgi import DGI
@@ -11,33 +12,41 @@ from models.DGI.execute import extract_embeddings as DGI_extract_embeddings
 from models.Classifier.FFN import TrainFFN, EvaluateFFN
 
 
-class NpyFeatureDataset(Dataset):
-    def __init__(self, node_list, label_df, npy_dir):
-        self.npy_dir = npy_dir
+class NpzFeatureDataset(Dataset):
+    def __init__(self, node_list, label_df, npz_paths):
+        self.npz_paths = npz_paths if isinstance(npz_paths, list) else [npz_paths]
+        
+        # Load npz data from all paths
+        embed_dict = {}
+        for path in self.npz_paths:
+            if os.path.exists(path):
+                data = np.load(path)
+                embed_dict.update(dict(zip(data['node_ids'], data['embeddings'])))
         
         valid_nodes = []
         labels = []
+        features = []
+        
         # Label mapping: Driver=1, Passenger=0
         label_map = {'Passenger': 0, 'Driver': 1}
         node_to_label = dict(zip(label_df['node_id'], label_df['label']))
         
         for node in node_list:
-            if node in node_to_label:
-                npy_path = os.path.join(npy_dir, f"{node}.npy")
-                if os.path.exists(npy_path):
-                    valid_nodes.append(node)
-                    labels.append(label_map[node_to_label[node]])
+            if node in node_to_label and node in embed_dict:
+                valid_nodes.append(node)
+                labels.append(label_map[node_to_label[node]])
+                features.append(embed_dict[node])
                     
         self.nodes = valid_nodes
         self.labels = labels
+        self.features = features
         
     def __len__(self):
         return len(self.nodes)
         
     def __getitem__(self, idx):
         node = self.nodes[idx]
-        npy_path = os.path.join(self.npy_dir, f"{node}.npy")
-        x = np.load(npy_path)
+        x = self.features[idx]
         y = self.labels[idx]
         return torch.tensor(x, dtype=torch.float), torch.tensor(y, dtype=torch.long), node
 
@@ -57,9 +66,13 @@ def get_node_list_from_loader(loader):
 def TrainGNN(model, loader, optimizer, criterion, device, label_map):
     model.train()
     total_loss = 0
+    total_correct = 0
+    total_samples = 0
+    all_preds = []
+    all_targets = []
     
     if len(loader) == 0:
-        return 0
+        return 0, 0, 0
 
     for batch in loader:
         batch = batch.to(device)
@@ -95,15 +108,25 @@ def TrainGNN(model, loader, optimizer, criterion, device, label_map):
         optimizer.step()
         
         total_loss += loss.item()
+        preds = torch.argmax(valid_logits, dim=1)
+        total_correct += (preds == valid_labels).sum().item()
+        total_samples += valid_labels.size(0)
+        all_preds.extend(preds.cpu().numpy())
+        all_targets.extend(valid_labels.cpu().numpy())
     
-    return total_loss / len(loader)
+    f1 = f1_score(all_targets, all_preds, average='macro', zero_division=0)
+    return total_loss / len(loader), total_correct / total_samples, f1
 
 def EvaluateGNN(model, loader, criterion, device, label_map):
     model.eval()
     total_loss = 0
+    total_correct = 0
+    total_samples = 0
+    all_preds = []
+    all_targets = []
     
     if len(loader) == 0:
-        return 0
+        return 0, 0, 0
 
     with torch.no_grad():
         for batch in loader:
@@ -135,8 +158,14 @@ def EvaluateGNN(model, loader, criterion, device, label_map):
             valid_logits = logits[valid_indices]
             loss = criterion(valid_logits, valid_labels)
             total_loss += loss.item()
+            preds = torch.argmax(valid_logits, dim=1)
+            total_correct += (preds == valid_labels).sum().item()
+            total_samples += valid_labels.size(0)
+            all_preds.extend(preds.cpu().numpy())
+            all_targets.extend(valid_labels.cpu().numpy())
     
-    return total_loss / len(loader)
+    f1 = f1_score(all_targets, all_preds, average='macro', zero_division=0)
+    return total_loss / len(loader), total_correct / total_samples, f1
 
 
 def run_downstream(config, clf_model, train_loader, val_loader, test_loader, run_wandb=None):
@@ -156,10 +185,16 @@ def run_downstream(config, clf_model, train_loader, val_loader, test_loader, run
         
         BASESAVEPATH = os.path.join(config.SAVEPATH, config.load_model, config.load_wandb_id)
         
+        all_npz_paths = [
+            os.path.join(BASESAVEPATH, 'train', 'train_embeddings.npz'),
+            os.path.join(BASESAVEPATH, 'val', 'val_embeddings.npz'),
+            os.path.join(BASESAVEPATH, 'test', 'test_embeddings.npz')
+        ]
+        
         # Datasets
-        train_dataset = NpyFeatureDataset(train_nodes, label_df, os.path.join(BASESAVEPATH, 'train'))
-        val_dataset = NpyFeatureDataset(val_nodes, label_df, os.path.join(BASESAVEPATH, 'val'))
-        test_dataset = NpyFeatureDataset(test_nodes, label_df, os.path.join(BASESAVEPATH, 'test'))
+        train_dataset = NpzFeatureDataset(train_nodes, label_df, all_npz_paths)
+        val_dataset = NpzFeatureDataset(val_nodes, label_df, all_npz_paths)
+        test_dataset = NpzFeatureDataset(test_nodes, label_df, all_npz_paths)
         
         # DataLoaders
         ffn_train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
@@ -169,26 +204,46 @@ def run_downstream(config, clf_model, train_loader, val_loader, test_loader, run
         optimizer = torch.optim.Adam(clf_model.parameters(), lr=config.lr, weight_decay=config.l2_coef)
         criterion = nn.CrossEntropyLoss()
         
-        best_val_loss = float('inf')
-        clf_save_dir = os.path.join(config.SAVEPATH, 'Classifier')
+        use_scheduler = getattr(config, 'use_scheduler', False)
+        if use_scheduler:
+            lr_patience = getattr(config, 'lr_patience', 10)
+            lr_factor = getattr(config, 'lr_factor', 0.1)
+            min_lr = getattr(config, 'min_lr', 1e-6)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode='min', factor=lr_factor, patience=lr_patience, min_lr=min_lr,
+            )
+        else:
+            scheduler = None
+        
+        best_val_f1 = 0.0
+        if run_wandb:
+            clf_save_dir = os.path.join(config.SAVEPATH, 'Classifier', run_wandb.id)
+        else:
+            clf_save_dir = os.path.join(config.SAVEPATH, 'Classifier')
         os.makedirs(clf_save_dir, exist_ok=True)
-        save_path = os.path.join(clf_save_dir, 'FFN_best.pth')
+        save_path = os.path.join(clf_save_dir, 'BestPerformance.pth')
         
         print("============================"*2)
         print("TRAINING FFN CLASSIFIER")
         print("============================"*2)
         
         for epoch in range(config.epoch):
-            train_loss = TrainFFN(clf_model, ffn_train_loader, optimizer, criterion, device)
-            val_loss = EvaluateFFN(clf_model, ffn_val_loader, criterion, device)
-            test_loss = EvaluateFFN(clf_model, ffn_test_loader, criterion, device)
+            train_loss, train_acc, train_f1 = TrainFFN(clf_model, ffn_train_loader, optimizer, criterion, device)
+            val_loss, val_acc, val_f1 = EvaluateFFN(clf_model, ffn_val_loader, criterion, device)
+            test_loss, test_acc, test_f1 = EvaluateFFN(clf_model, ffn_test_loader, criterion, device)
             
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
                 torch.save(clf_model.state_dict(), save_path)
                 
+            if scheduler is not None:
+                scheduler.step(val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+            else:
+                current_lr = optimizer.param_groups[0]['lr']
+                
             if epoch % 10 == 0:
-                print(f'Epoch {epoch:4d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Test Loss: {test_loss:.4f}')
+                print(f'Epoch {epoch:4d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val F1: {val_f1:.4f} | Test F1: {test_f1:.4f} | LR: {current_lr:.6f}')
             
             if run_wandb:
                 run_wandb.log({
@@ -196,6 +251,13 @@ def run_downstream(config, clf_model, train_loader, val_loader, test_loader, run
                     "Train Loss": train_loss,
                     "Val Loss": val_loss,
                     "Test Loss": test_loss,
+                    "Train Acc": train_acc,
+                    "Val Acc": val_acc,
+                    "Test Acc": test_acc,
+                    "Train F1": train_f1,
+                    "Val F1": val_f1,
+                    "Test F1": test_f1,
+                    "LR": current_lr,
                 })
                 
         # Load best model for evaluation
@@ -330,26 +392,46 @@ def run_downstream(config, clf_model, train_loader, val_loader, test_loader, run
         optimizer = torch.optim.Adam(clf_model.parameters(), lr=config.lr, weight_decay=config.l2_coef)
         criterion = nn.CrossEntropyLoss()
         
-        best_val_loss = float('inf')
-        clf_save_dir = os.path.join(config.SAVEPATH, 'Classifier')
+        use_scheduler = getattr(config, 'use_scheduler', False)
+        if use_scheduler:
+            lr_patience = getattr(config, 'lr_patience', 10)
+            lr_factor = getattr(config, 'lr_factor', 0.1)
+            min_lr = getattr(config, 'min_lr', 1e-6)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode='min', factor=lr_factor, patience=lr_patience, min_lr=min_lr,
+            )
+        else:
+            scheduler = None
+        
+        best_val_f1 = 0.0
+        if run_wandb:
+            clf_save_dir = os.path.join(config.SAVEPATH, 'Classifier', run_wandb.id)
+        else:
+            clf_save_dir = os.path.join(config.SAVEPATH, 'Classifier')
         os.makedirs(clf_save_dir, exist_ok=True)
-        save_path = os.path.join(clf_save_dir, f'{config.clf_model}_best.pth')
+        save_path = os.path.join(clf_save_dir, 'BestPerformance.pth')
         
         print("============================"*2)
         print(f"TRAINING {config.clf_model} CLASSIFIER")
         print("============================"*2)
         
         for epoch in range(config.epoch):
-            train_loss = TrainGNN(clf_model, train_loader, optimizer, criterion, device, node_to_label)
-            val_loss = EvaluateGNN(clf_model, val_loader, criterion, device, node_to_label)
-            test_loss = EvaluateGNN(clf_model, test_loader, criterion, device, node_to_label)
+            train_loss, train_acc, train_f1 = TrainGNN(clf_model, train_loader, optimizer, criterion, device, node_to_label)
+            val_loss, val_acc, val_f1 = EvaluateGNN(clf_model, val_loader, criterion, device, node_to_label)
+            test_loss, test_acc, test_f1 = EvaluateGNN(clf_model, test_loader, criterion, device, node_to_label)
             
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
                 torch.save(clf_model.state_dict(), save_path)
                 
+            if scheduler is not None:
+                scheduler.step(val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+            else:
+                current_lr = optimizer.param_groups[0]['lr']
+                
             if epoch % 10 == 0:
-                print(f'Epoch {epoch:4d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Test Loss: {test_loss:.4f}')
+                print(f'Epoch {epoch:4d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val F1: {val_f1:.4f} | Test F1: {test_f1:.4f} | LR: {current_lr:.6f}')
                 
             if run_wandb:
                 run_wandb.log({
@@ -357,6 +439,13 @@ def run_downstream(config, clf_model, train_loader, val_loader, test_loader, run
                     "Train Loss": train_loss,
                     "Val Loss": val_loss,
                     "Test Loss": test_loss,
+                    "Train Acc": train_acc,
+                    "Val Acc": val_acc,
+                    "Test Acc": test_acc,
+                    "Train F1": train_f1,
+                    "Val F1": val_f1,
+                    "Test F1": test_f1,
+                    "LR": current_lr,
                 })
         # Load best model for evaluation
         if os.path.exists(save_path):

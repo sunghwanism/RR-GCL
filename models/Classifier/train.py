@@ -36,6 +36,12 @@ def get_parser():
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--l2_coef', type=float, default=0.00001)
     
+    # LR Scheduler Args
+    parser.add_argument('--use_scheduler', action='store_true', help='Use LR Scheduler')
+    parser.add_argument('--lr_patience', type=int, default=10, help='Patience for LR Scheduler')
+    parser.add_argument('--lr_factor', type=float, default=0.1, help='Factor for LR Scheduler')
+    parser.add_argument('--min_lr', type=float, default=1e-6, help='Minimum LR for Scheduler')
+    
     parser.add_argument('--seed', type=int, default=42, help='Seed for random number generator')
     
     # wandb args
@@ -77,15 +83,16 @@ def main():
     hop_ratios = getattr(config, 'hop_ratios', [0.9, 0.8, 0.5, 0.5, 0.5])
     aug_min_node = getattr(config, 'aug_min_node', 30)
 
-    rng = random.Random(config.seed)
+    # split cc_list into training, validation and testing sets
+    rng = random.Random(777)
     
     num_total = len(cc_list)
     train_val_idx = rng.sample(range(num_total), min(124, num_total))
-    exclude_values = {45, 46}
+    exclude_values = {45, 46}  # incldue cancer driver
     train_val_idx = [i for i in train_val_idx if i not in exclude_values]
     test_idx = [i for i in range(num_total) if i not in train_val_idx]
     
-    val_ratio = 0.15
+    val_ratio = 0.20
     num_val = int(len(train_val_idx) * val_ratio)
     val_idx = rng.sample(train_val_idx, num_val)
     train_idx = [i for i in train_val_idx if i not in val_idx]
@@ -93,6 +100,14 @@ def main():
     train_idx.sort()
     val_idx.sort()
     test_idx.sort()
+
+    train_nodes = [node for idx in train_idx for node in list(cc_list[idx].nodes())]
+    val_nodes = [node for idx in val_idx for node in list(cc_list[idx].nodes())]
+    test_nodes = [node for idx in test_idx for node in list(cc_list[idx].nodes())]
+
+    print("Train Nodes", len(train_nodes), "Train cc", len(train_idx))
+    print("Val Nodes", len(val_nodes), "Val cc", len(val_idx))
+    print("Test Nodes", len(test_nodes), "Test cc", len(test_idx))
 
     print(f"[Data Augmentation] Augmenting ONLY train graph components...")
     train_data_list = augment_connected_components(cc_list, graph, aug_anchor_ratio, hop_ratios, min_aug_node=aug_min_node, idx_list=train_idx, seed=config.seed)
@@ -116,36 +131,24 @@ def main():
 
     print(f"Initializing {config.clf_model} model...")
     if config.clf_model == 'FFN':
-        # Check actual .npy shape robustly
-        sample_node = None
-        for attr in ['node_names', 'node_id']:
-            if hasattr(first_batch, attr):
-                val = getattr(first_batch, attr)
-                if isinstance(val, list) and len(val) > 0:
-                    if isinstance(val[0], list) and len(val[0]) > 0:
-                        sample_node = val[0][0]
-                    elif isinstance(val[0], (str, int)):
-                        sample_node = val[0]
-                if sample_node: break
+        # Check actual .npz shape robustly
+        found_npz = False
+        for split in ['train', 'val', 'test']:
+            npz_path = os.path.join(config.SAVEPATH, config.load_model, config.load_wandb_id, split, f"{split}_embeddings.npz")
+            if os.path.exists(npz_path):
+                data = np.load(npz_path)
+                actual_dim = data['embeddings'].shape[1]
+                if actual_dim != in_ft_ffn:
+                    print("============================================================")
+                    print(f"[WARNING] Config in_ft_ffn ({in_ft_ffn}) is different from actual .npz dimension ({actual_dim}).")
+                    print(f"-> Automatically changing in_ft_ffn to {actual_dim} to proceed.")
+                    print("============================================================")
+                    in_ft_ffn = actual_dim
+                found_npz = True
+                break
         
-        if sample_node:
-            # Check train/val/test folders for the sample node
-            found_npy = False
-            for split in ['train', 'val', 'test']:
-                npy_path = os.path.join(config.SAVEPATH, config.load_model, config.load_wandb_id, split, f"{sample_node}.npy")
-                if os.path.exists(npy_path):
-                    sample_npy = np.load(npy_path)
-                    actual_dim = sample_npy.shape[0]
-                    if actual_dim != in_ft_ffn:
-                        print("============================================================")
-                        print(f"[WARNING] Config in_ft_ffn ({in_ft_ffn}) is different from actual .npy dimension ({actual_dim}).")
-                        print(f"-> Automatically changing in_ft_ffn to {actual_dim} to proceed.")
-                        print("============================================================")
-                        in_ft_ffn = actual_dim
-                    found_npy = True
-                    break
-            if not found_npy:
-                print(f"[INFO] Could not find .npy file for sample node {sample_node} to verify dimension. Proceeding with config value.")
+        if not found_npz:
+            print(f"[INFO] Could not find .npz file to verify dimension. Proceeding with config value.")
                     
         clf_model = FFNClassifier(in_ft_ffn, out_ft_list, activation, drop_prob, n_cls)
     elif config.clf_model == 'GAT':

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from models.Classifier.activation import getActivation
+from sklearn.metrics import f1_score
 
 
 class FFNClassifier(nn.Module):
@@ -30,9 +31,13 @@ class FFNClassifier(nn.Module):
 def TrainFFN(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
+    total_correct = 0
+    total_samples = 0
+    all_preds = []
+    all_targets = []
     
     if len(loader) == 0:
-        return 0
+        return 0, 0, 0
 
     for x, y, _ in loader:
         x, y = x.to(device), y.to(device)
@@ -44,16 +49,26 @@ def TrainFFN(model, loader, optimizer, criterion, device):
         optimizer.step()
         
         total_loss += loss.item()
+        preds = torch.argmax(logits, dim=1)
+        total_correct += (preds == y).sum().item()
+        total_samples += y.size(0)
+        all_preds.extend(preds.cpu().numpy())
+        all_targets.extend(y.cpu().numpy())
     
-    return total_loss / len(loader)
+    f1 = f1_score(all_targets, all_preds, average='macro', zero_division=0)
+    return total_loss / len(loader), total_correct / total_samples, f1
 
 
 def EvaluateFFN(model, loader, criterion, device):
     model.eval()
     total_loss = 0
+    total_correct = 0
+    total_samples = 0
+    all_preds = []
+    all_targets = []
     
     if len(loader) == 0:
-        return 0
+        return 0, 0, 0
 
     with torch.no_grad():
         for x, y, _ in loader:
@@ -61,5 +76,11 @@ def EvaluateFFN(model, loader, criterion, device):
             logits = model(x)
             loss = criterion(logits, y)
             total_loss += loss.item()
+            preds = torch.argmax(logits, dim=1)
+            total_correct += (preds == y).sum().item()
+            total_samples += y.size(0)
+            all_preds.extend(preds.cpu().numpy())
+            all_targets.extend(y.cpu().numpy())
     
-    return total_loss / len(loader)
+    f1 = f1_score(all_targets, all_preds, average='macro', zero_division=0)
+    return total_loss / len(loader), total_correct / total_samples, f1
