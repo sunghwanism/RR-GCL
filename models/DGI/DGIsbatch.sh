@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --account=$ACCOUNT_NAME
-#SBATCH --job-name=DGI_train_1_all
-#SBATCH --output=logs/DGI_train_1_all_%j.txt
+#SBATCH --account=
+#SBATCH --job-name=DGI_train_wE
+#SBATCH --output=logs/DGI_train_wE_%j.txt
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=5G
-#SBATCH --time=01:00:00
+#SBATCH --time=03:00:00
 
 
 #############################
@@ -74,16 +74,17 @@ srun python models/DGI/train.py \
      --batch_size 64 \
      --epoch 500 \
      --num_workers 4 \
-     --lr 0.001 \
-     --patience 50 \
+     --lr 0.0005 \
+     --patience 100 \
      --min_delta 0.001 \
      --use_scheduler \
-     --lr_patience 10 \
-     --lr_factor 0.2 \
+     --lr_patience 50 \
+     --lr_factor 0.85 \
      --min_lr 1e-6 \
      --wandb_key $WANDB_API_KEY \
      --entity_name $ENTITY_NAME \
      --project_name DGI \
-     --wandb_run_name 'Train-1_all' \
-     --SAVEPATH $SAVEPATH \
-     --node_att "${FEATURES[@]}"
+     --wandb_run_name 'Train-all_wEnergy' \
+     --SAVEPATH $RRGCL_DATA \
+     --node_att "${FEATURES[@]}" \
+     --edge_att "cleaned_total_energy"
