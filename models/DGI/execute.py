@@ -166,6 +166,7 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
     print("============================"*2)
     
     best_loss = float('inf')
+    best_loss_es = float('inf')
     best_epoch = 0
     cnt_wait = 0
     
@@ -223,18 +224,26 @@ def run_training(config, train_loader, val_loader, test_loader, run_wandb=None):
         if epoch % 50 == 0:
             print(f'Epoch {epoch:4d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {current_lr:.6f}')
         
-        # Early stopping based on validation loss
+        min_delta = getattr(config, 'min_delta', 0.0)
+        if min_delta is None:
+            min_delta = 0.0
+
+        # Early stopping condition (with delta)
+        if val_loss < best_loss_es - min_delta and epoch > 4:
+            best_loss_es = val_loss
+            cnt_wait = 0
+        else:
+            if epoch > 4: # wait for 5 epochs to start early stopping
+                cnt_wait += 1
+
+        # Save and logging condition (without delta)
         if val_loss < best_loss and epoch > 4:
             best_loss = val_loss
             best_epoch = epoch
-            cnt_wait = 0
             torch.save(model.state_dict(), save_path)
             if run_wandb:
                 run_wandb.summary["best_val_loss"] = best_loss
                 run_wandb.summary["best_epoch"] = best_epoch
-        else:
-            if epoch > 4: # wait for 5 epochs to start early stopping
-                cnt_wait += 1
 
         if run_wandb:
             run_wandb.log({
