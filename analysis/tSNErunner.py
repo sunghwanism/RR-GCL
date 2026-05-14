@@ -33,11 +33,15 @@ FEATURE_COLS = [
 
 # Model mapping (Model Name -> Wandb ID)
 MODELS = {
-    "All": '9oxu0esk',
-    "exCategory": '4kckha9d',
-    'exEvol': '26bsk9qs',
-    'exSS': 'pyav8l3c',
-    'All+Egy': '39rgottw'
+    "All": 'szusj1rl',
+    'ExLocalGeo': '3rki24k9',
+    'ExLocalGeo+Egy': '3v9dkf3h',
+    'All+Egy': 'rtn2y7dv',
+    'All+Egy2': 'di9woh2e',
+    'ExSpEnv': 'v6iuy1du',
+    'ExSpEnv+Egy': 'sryxn215',
+    'ExEvol': "dytsoorb",
+    'ExEvol+Egy': 'fa2h3zct'
 }
 
 # ==========================================
@@ -149,7 +153,7 @@ def main():
 
     # Load Cancer Driver DataFrame
     print("Loading cancer driver data...")
-    mut_df = pd.read_csv('models/matched_cancer_driver_df.csv')
+    mut_df = pd.read_csv(f'{DATABASE}/matched_cancer_driver_df.csv')
 
     # Create metadata DataFrame for merging
     meta_df = mut_df[['node_id', 'label']].merge(org_res_feat_df[['node_id', 'max_am']], on='node_id', how='left')
