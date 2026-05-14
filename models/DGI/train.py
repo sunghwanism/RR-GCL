@@ -23,6 +23,7 @@ def get_parser():
     parser.add_argument('--load_pretrained', action='store_true', help='Load pretrained model')
     parser.add_argument('--node_att', type=str, nargs='+', default=None, help='List of node attributes to override config')
     parser.add_argument('--edge_att', type=str, default=None, help='Edge attribute name to use (e.g., cleaned_total_energy)')
+    parser.add_argument('--edge_norm', action='store_true', help='Standardize edge weights after sign inversion')
     
     # Training args overrides
     parser.add_argument('--batch_size', type=int, default=32)
@@ -42,6 +43,7 @@ def get_parser():
     parser.add_argument('--min_lr', type=float, default=1e-6, help='Minimum LR for scheduler')
 
     # graph augmentation args
+    parser.add_argument('--use_augmentation', action='store_true', help='Use graph augmentation')
     parser.add_argument('--aug_anchor_ratio', type=float, default=0.01, help='Ratio of anchor nodes to total nodes')
     parser.add_argument('--aug_hop_ratios', type=list, default=[0.9, 0.8, 0.5, 0.5, 0.5], help='Ratios of neighbors to select at each hop')
     
@@ -70,6 +72,10 @@ def main():
         if not hasattr(config, 'model_param'):
             config.model_param = {}
         config.model_param['edge_att'] = args.edge_att
+        
+    if not hasattr(config, 'model_param'):
+        config.model_param = {}
+    config.model_param['edge_norm'] = args.edge_norm
             
     set_seed(config.seed)
     print(config)
@@ -98,11 +104,17 @@ def main():
     train_val_idx = rng.sample(range(num_total), min(124, num_total))
     exclude_values = {45, 46}  # incldue cancer driver
     train_val_idx = [i for i in train_val_idx if i not in exclude_values]
+
+    # Additional graph dataset (graph size < 5)
+    train_val_idx.extend([i for i in range(130, 200, 2)])
+    print("Add small graph in train+val index.")
+    
     test_idx = [i for i in range(num_total) if i not in train_val_idx]
     
-    val_ratio = 0.20
+    val_ratio = 0.21
     num_val = int(len(train_val_idx) * val_ratio)
     val_idx = rng.sample(train_val_idx, num_val)
+    val_idx.extend([2])
     train_idx = [i for i in train_val_idx if i not in val_idx]
 
     train_idx.sort()
@@ -118,13 +130,16 @@ def main():
     print("Test Nodes", len(test_nodes), "Test cc", len(test_idx))
 
 
-    print(f"[Data Augmentation] Augmenting ONLY train graph components...")
-    train_data_list = augment_connected_components(cc_list, graph, aug_anchor_ratio, hop_ratios, min_aug_node=aug_min_node, idx_list=train_idx, seed=config.seed)
-    
+    if getattr(config, 'use_augmentation', False):
+        print(f"[Data Augmentation] Augmenting ONLY train graph components...")
+        train_data_list = augment_connected_components(cc_list, graph, aug_anchor_ratio, hop_ratios, min_aug_node=aug_min_node, idx_list=train_idx, seed=config.seed)
+        print(f"[Data Augmentation] Augmented train graph has {len(train_data_list)} connected components. Time: {formatTime(time.time() - start)}")
+    else:
+        print(f"[Data Augmentation] Augmentation is DISABLED. Using original train graph components...")
+        train_data_list = [cc_list[i] for i in train_idx]
+
     val_data_list = [cc_list[i] for i in val_idx]
     test_data_list = [cc_list[i] for i in test_idx] 
-    
-    print(f"[Data Augmentation] Augmented train graph has {len(train_data_list)} connected components. Time: {formatTime(time.time() - start)}")
     
     # Create PyG DataLoaders
     print("================ [Generate Train/Val/Test DataLoader] ================")

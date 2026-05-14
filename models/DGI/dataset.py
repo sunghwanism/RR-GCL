@@ -174,10 +174,20 @@ def load_data(config):
         mapping_dict = attr_mappings.get(col, {})
         feat_df[col] = feat_df[col].apply(safe_parse)
         
+        is_dssp_3class = False
+        if col == 'dssp_sec_struct':
+            unique_vals = set(mapping_dict.values())
+            # Usually 0 is padding, 1,2,3 are classes. So max 4 unique values.
+            if len(unique_vals) <= 4:
+                is_dssp_3class = True
+                print("[Load Dataset] dssp_sec_struct is using 3 classes. Removing duplicates from sequences.")
+        
         max_len = max(feat_df[col].apply(len).max(), 1)
 
-        def fast_encode(val_list):
-            mapped = [mapping_dict.get(str(v), PAD_VALUE) for v in val_list]
+        def fast_encode(val_list, is_3class=is_dssp_3class, m_dict=mapping_dict):
+            mapped = [m_dict.get(str(v), PAD_VALUE) for v in val_list]
+            if is_3class:
+                mapped = list(dict.fromkeys(mapped))
             return mapped + [PAD_VALUE] * (max_len - len(mapped))
 
         feat_df[col] = feat_df[col].apply(fast_encode)
@@ -230,9 +240,23 @@ def load_data(config):
         for u, v, d in graph.edges(data=True):
             d.clear()
     else:
+        # Sign inversion
         for u, v, d in graph.edges(data=True):
             if edge_att_val in d:
                 d[edge_att_val] = -d[edge_att_val]
+                
+        # Standardization
+        if config.model_param.get('edge_norm', False):
+            import numpy as np
+            edge_vals = [d[edge_att_val] for u, v, d in graph.edges(data=True) if edge_att_val in d]
+            if edge_vals:
+                mean_val = np.mean(edge_vals)
+                std_val = np.std(edge_vals)
+                if std_val == 0:
+                    std_val = 1.0
+                for u, v, d in graph.edges(data=True):
+                    if edge_att_val in d:
+                        d[edge_att_val] = float((d[edge_att_val] - mean_val) / std_val)
 
     print(f"[Load Dataset] Final Node Attributes || Use Edge Weight {edge_att_val}")
     print(f"Continuous features (x): {cont_cols}")
