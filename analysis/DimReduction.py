@@ -2,6 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+import umap
+from sklearn.preprocessing import StandardScaler
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -48,19 +51,29 @@ MODELS = {
 # Utility Functions
 # ==========================================
 
-def compute_tsne(features, n_components=2, perplexity=100, max_iter=1000):
+def compute_tsne(features, n_components=2, perplexity=300, max_iter=1000):
     """Utility function to compute t-SNE embeddings."""
     tsne = TSNE(
         n_components=n_components, 
         random_state=42, 
         perplexity=perplexity, 
-        early_exaggeration=20,
+        early_exaggeration=30,
         max_iter=max_iter,
         n_jobs=-1,
         init='pca',
         learning_rate='auto'
     )
     return tsne.fit_transform(features)
+
+def compute_pca(features, n_components=2):
+    """Utility function to compute PCA embeddings."""
+    pca = PCA(n_components=n_components, random_state=42)
+    return pca.fit_transform(features)
+
+def compute_umap(features, n_components=2):
+    """Utility function to compute UMAP embeddings."""
+    reducer = umap.UMAP(n_components=n_components, random_state=42)
+    return reducer.fit_transform(features)
 
 def process_model_embeddings(model_info, savepath, meta_df):
     """Processes a single model's embeddings and saves the t-SNE results."""
@@ -79,12 +92,21 @@ def process_model_embeddings(model_info, savepath, meta_df):
     if embeddings.ndim > 2:
         embeddings = embeddings.reshape(embeddings.shape[0], -1)
         
+    # Normalization
+    embeddings = StandardScaler().fit_transform(embeddings)
+        
     emb_2d = compute_tsne(embeddings, max_iter=1000)
+    pca_2d = compute_pca(embeddings)
+    umap_2d = compute_umap(embeddings)
     
     vis_df = pd.DataFrame({
         'node_id': node_ids,
         'tsne_1': emb_2d[:, 0],
-        'tsne_2': emb_2d[:, 1]
+        'tsne_2': emb_2d[:, 1],
+        'pca_1': pca_2d[:, 0],
+        'pca_2': pca_2d[:, 1],
+        'umap_1': umap_2d[:, 0],
+        'umap_2': umap_2d[:, 1]
     })
     
     vis_df = vis_df.join(meta_df, on='node_id', how='left')
@@ -117,16 +139,27 @@ def process_original_features(savepath, org_res_feat_df, mut_df):
     # If there are missing values (NaN), fill them with 0 as t-SNE will raise an error
     features = filtered_org_df[FEATURE_COLS].fillna(0).values
 
-    # 3. Calculate t-SNE based on the original features
+    # 3. Calculate embeddings based on the original features
     print(f"Running TSNE on {len(features)} original nodes with {len(FEATURE_COLS)} features...")
     org_emb_2d = compute_tsne(features, max_iter=1500)
+    
+    print("Running PCA...")
+    org_pca_2d = compute_pca(features)
+    
+    print("Running UMAP...")
+    org_umap_2d = compute_umap(features)
 
-    # 4. Create a DataFrame for visualization (including max_am)
+    # 4. Create a DataFrame for visualization (including max_am and avg_am)
     vis_org_df = pd.DataFrame({
         'node_id': filtered_org_df['node_id'].values,
         'tsne_1': org_emb_2d[:, 0],
         'tsne_2': org_emb_2d[:, 1],
-        'max_am': filtered_org_df['max_am'].values
+        'pca_1': org_pca_2d[:, 0],
+        'pca_2': org_pca_2d[:, 1],
+        'umap_1': org_umap_2d[:, 0],
+        'umap_2': org_umap_2d[:, 1],
+        'max_am': filtered_org_df['max_am'].values,
+        'avg_am': filtered_org_df['avg_am'].values
     })
 
     # Merge with mut_df to get label information
@@ -149,14 +182,16 @@ def main():
     # Load Feature DataFrame
     print(f"Loading feature data from {DATABASE}...")
     org_res_feat_df = pd.read_csv(f'{DATABASE}/merged_feature_data_v041226.csv')
-    org_res_feat_df['max_am'] = org_res_feat_df.filter(like='am').max(axis=1)
+    am_cols = org_res_feat_df.filter(like='am_')
+    org_res_feat_df['max_am'] = am_cols.max(axis=1)
+    org_res_feat_df['avg_am'] = am_cols.replace(0, np.nan).mean(axis=1)
 
     # Load Cancer Driver DataFrame
     print("Loading cancer driver data...")
     mut_df = pd.read_csv(f'{DATABASE}/matched_cancer_driver_df.csv')
 
-    # Create metadata DataFrame for merging
-    meta_df = mut_df[['node_id', 'label']].merge(org_res_feat_df[['node_id', 'max_am']], on='node_id', how='left')
+    # Create metadata DataFrame for merging (Keep all nodes from org_res_feat_df)
+    meta_df = org_res_feat_df[['node_id', 'max_am', 'avg_am']].merge(mut_df[['node_id', 'label']], on='node_id', how='left')
     meta_df = meta_df.set_index('node_id')
 
     # Run parallel processing for model embeddings
